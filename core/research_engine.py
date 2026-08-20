@@ -1,8 +1,4 @@
-"""Top-level orchestration for the modular research pipeline.
-
-The engine coordinates candidate generation, indicator signals, backtesting and
-ranking. It is strictly read-only with respect to MetaTrader.
-"""
+"""Top-level orchestration for the modular XAU research pipeline."""
 from dataclasses import dataclass
 from threading import Event
 from typing import Any, Callable, Dict, List, Optional
@@ -33,12 +29,16 @@ class ResearchEngine:
             risk_percent=self.config.risk_percent,
         ))
         self.ranker = StrategyRanker()
+        self.last_results: List[Dict[str, Any]] = []
+        self.last_ranked: List[Dict[str, Any]] = []
 
     def generate_candidates(self) -> List[StrategySpec]:
         return self.generator.generate()
 
     def rank_results(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        return self.ranker.rank(results)
+        ranked = self.ranker.rank(results)
+        self.last_ranked = ranked
+        return ranked
 
     def run_candidate(self, data: pd.DataFrame, signals: pd.Series, sl_distance: pd.Series, rr: Optional[float] = None) -> Dict[str, Any]:
         result = self.backtester.run(data, signals, sl_distance, self.config.default_rr if rr is None else rr)
@@ -46,15 +46,16 @@ class ResearchEngine:
         wins = sum(1 for t in trades if t.pnl > 0)
         gross_profit = sum(t.pnl for t in trades if t.pnl > 0)
         gross_loss = abs(sum(t.pnl for t in trades if t.pnl < 0))
-        pf = gross_profit / gross_loss if gross_loss > 0 else 0.0
+        pf = gross_profit / gross_loss if gross_loss > 0 else (float("inf") if gross_profit > 0 else 0.0)
         win_rate = 100.0 * wins / len(trades) if trades else 0.0
         net_r = sum(t.r_multiple for t in trades)
         expectancy = net_r / len(trades) if trades else 0.0
         peak = self.config.initial_balance
-        max_dd = 0.0
+        max_dd_cash = 0.0
         for equity in result.equity_curve:
             peak = max(peak, equity)
-            max_dd = max(max_dd, peak - equity)
+            max_dd_cash = max(max_dd_cash, peak - equity)
+        max_dd_pct = (100.0 * max_dd_cash / self.config.initial_balance) if self.config.initial_balance else 0.0
         return {
             "final_balance": result.balance,
             "trade_count": len(trades),
@@ -62,7 +63,8 @@ class ResearchEngine:
             "profit_factor": pf,
             "net_r": net_r,
             "expectancy": expectancy,
-            "max_drawdown": max_dd,
+            "max_drawdown": max_dd_cash,
+            "max_drawdown_pct": max_dd_pct,
             "equity_curve": result.equity_curve,
             "trades": [t.to_dict() for t in trades],
         }
@@ -75,32 +77,55 @@ class ResearchEngine:
         metrics["strategy"] = spec.to_dict()
         return metrics
 
-    def run_research(self, data: pd.DataFrame, candidate_runner: Optional[Callable[[Any, pd.DataFrame], Dict[str, Any]]] = None,
-                     stop_event: Optional[Event] = None, progress_callback: Optional[Callable[[int, int], None]] = None,
-                     log_callback: Optional[Callable[[str], None]] = None) -> List[Dict[str, Any]]:
+    def run_research(
+        self,
+        data: pd.DataFrame,
+        stop_event: Optional[Event] = None,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+        log_callback: Optional[Callable[[str], None]] = None,
+    ) -> List[Dict[str, Any]]:
+        if data is None or len(data) < 100:
+            raise ValueError("Insufficient historical data. Load at least 100 bars before research.")
         stop_event = stop_event or Event()
         candidates = self.generate_candidates()
         total = len(candidates)
         results: List[Dict[str, Any]] = []
         if log_callback:
             log_callback(f"Started. Candidates: {total}")
-        runner = candidate_runner or (lambda candidate, frame: self.evaluate_spec(frame, candidate))
         for index, candidate in enumerate(candidates, start=1):
             if stop_event.is_set():
                 if log_callback:
                     log_callback(f"STOP detected at candidate {index - 1}/{total}")
                 break
             try:
-                result = dict(runner(candidate, data))
+                result = self.evaluate_spec(data, candidate)
                 result["candidate_index"] = index
                 results.append(result)
                 if log_callback:
-                    log_callback(f"Candidate {index}/{total}: trades={result.get('trade_count', 0)} PF={result.get('profit_factor', 0):.2f} NetR={result.get('net_r', 0):.2f}")
+                    log_callback(
+                        f"Candidate {index}/{total}: "
+                        f"trades={result['trade_count']} "
+                        f"PF={result['profit_factor']:.2f} "
+                        f"WinRate={result['win_rate']:.1f}% "
+                        f"NetR={result['net_r']:.2f} "
+                        f"DD={result['max_drawdown_pct']:.2f}%"
+                    )
             except Exception as exc:
                 if log_callback:
                     log_callback(f"Candidate {index}/{total} failed: {exc}")
             if progress_callback:
                 progress_callback(index, total)
+        self.last_results = results
+        self.last_ranked = self.rank_results(results) if results else []
         if log_callback:
-            log_callback(f"Finished. Results: {len(results)}")
-        return results
+            log_callback(f"Finished. Processed results: {len(results)}")
+            if self.last_ranked:
+                for rank, item in enumerate(self.last_ranked[:5], start=1):
+                    log_callback(
+                        f"TOP {rank}: {item.get('strategy_name', 'N/A')} | "
+                        f"Score={item.get('ranking_score', 0):.2f} | "
+                        f"PF={item.get('profit_factor', 0):.2f} | "
+                        f"NetR={item.get('net_r', 0):.2f} | "
+                        f"DD={item.get('max_drawdown_pct', 0):.2f}%"
+                    )
+        return self.last_ranked
