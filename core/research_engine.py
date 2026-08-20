@@ -1,5 +1,5 @@
 """Top-level orchestration for modular XAU strategy research."""
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from threading import Event
 from typing import Any, Callable, Dict, List, Optional
 from pathlib import Path
@@ -14,6 +14,7 @@ from .validation.walk_forward import evaluate_walk_forward
 from .validation.walk_forward_score import walk_forward_score
 from .exporter import export_results
 from validation.monte_carlo import MonteCarloConfig, MonteCarloSimulator
+from validation.parameter_sensitivity import ParameterSensitivity, SensitivityConfig
 
 @dataclass
 class ResearchConfig:
@@ -36,6 +37,11 @@ class ResearchConfig:
     monte_carlo_seed: int = 42
     monte_carlo_probability_positive_min: float = 0.60
     monte_carlo_ruin_probability_max: float = 0.05
+    sensitivity_enabled: bool = True
+    sensitivity_top_n: int = 10
+    sensitivity_min_pf: float = 1.0
+    sensitivity_min_expectancy: float = 0.0
+    sensitivity_min_pass_rate: float = 0.60
     export_results: bool = True
     results_dir: str = "results"
 
@@ -59,6 +65,46 @@ class ResearchEngine:
             cfg=MonteCarloConfig(simulations=self.config.monte_carlo_simulations,seed=self.config.monte_carlo_seed,risk_fraction=self.config.risk_percent/100.0)
             return MonteCarloSimulator(cfg).simulate_trades(test_trades)
         except ValueError: return None
+    @staticmethod
+    def _nearby_values(value: Any, lower: float, upper: float, step: float) -> List[float]:
+        try: base=float(value)
+        except (TypeError, ValueError): return []
+        values=[]
+        for i in range(-2,3):
+            v=base+i*step
+            if lower <= v <= upper: values.append(int(v) if float(v).is_integer() else round(v,4))
+        return values
+    def _sensitivity_spec(self, spec: StrategySpec, parameter: str, value: float) -> StrategySpec:
+        indicators=dict(spec.indicators); risk=dict(spec.risk); entry=[dict(x) for x in spec.entry_rules]; exit_rules=[dict(x) for x in spec.exit_rules]
+        if parameter in indicators: indicators[parameter]=value
+        elif parameter in risk: risk[parameter]=value
+        for rule in entry:
+            if rule.get("type")=="EMA_TREND" and parameter=="ema_fast": rule["fast"]=value
+            if rule.get("type")=="EMA_TREND" and parameter=="ema_slow": rule["slow"]=value
+            if rule.get("type")=="RSI_RANGE" and parameter=="rsi_period": rule["period"]=value
+            if rule.get("type")=="RSI_RANGE" and spec.direction=="BUY" and parameter=="rsi_buy": rule["min"]=value
+            if rule.get("type")=="RSI_RANGE" and spec.direction=="SELL" and parameter=="rsi_sell": rule["max"]=value
+        for rule in exit_rules:
+            if parameter=="atr_sl" and rule.get("type")=="ATR_SL": rule["multiplier"]=value
+            if parameter=="rr" and rule.get("type")=="RR_TP": rule["rr"]=value
+        return StrategySpec(spec.name, spec.direction, indicators, entry, exit_rules, risk)
+    def _run_sensitivity(self, item, test_data, stop_event, log_callback=None):
+        if not self.config.sensitivity_enabled: return None
+        base=item["candidate"]; params={**base.indicators, **base.risk}; parameter_grid={}
+        for p,v in params.items():
+            if p in ("ema_fast","ema_slow","rsi_period"): parameter_grid[p]=self._nearby_values(v,2,500,5 if p!="rsi_period" else 1)
+            elif p in ("rsi_buy","rsi_sell"): parameter_grid[p]=self._nearby_values(v,20,80,2)
+            elif p=="atr_sl": parameter_grid[p]=self._nearby_values(v,0.5,4.0,0.25)
+            elif p=="rr": parameter_grid[p]=self._nearby_values(v,0.75,4.0,0.25)
+        sensitivity=ParameterSensitivity(SensitivityConfig(minimum_pf=self.config.sensitivity_min_pf,minimum_expectancy=self.config.sensitivity_min_expectancy,minimum_pass_rate=self.config.sensitivity_min_pass_rate))
+        output={}
+        for parameter,values in parameter_grid.items():
+            if stop_event.is_set(): break
+            def evaluator(value, p=parameter):
+                candidate=self._sensitivity_spec(base,p,value); return self.evaluate_spec(test_data,candidate)
+            result=sensitivity.run(params,{parameter:values},evaluator); output[parameter]=result
+            if log_callback: log_callback(f"[SENSITIVITY] {base.name} | {parameter} | PassRate={result['pass_rate']:.1%} | Robust={'YES' if result['robust'] else 'NO'}")
+        return output
     def run_research(self,data,stop_event=None,progress_callback=None,log_callback=None,walk_forward_progress_callback=None):
         if data is None or len(data)<100: raise ValueError("Insufficient historical data. Load at least 100 bars before research.")
         stop_event=stop_event or Event(); split=chronological_split(data,self.config.train_ratio); train_data,test_data=split.train,split.test; candidates=self.generate_candidates(); total=len(candidates); results=[]
@@ -99,12 +145,21 @@ class ResearchEngine:
                 if stop_event.is_set(): break
                 mc=self._monte_carlo(item); item["monte_carlo"]=mc
                 if mc:
-                    item["monte_carlo_robustness"] = max(0.0,min(100.0,100.0*(0.5*mc["probability_positive"]+0.5*(1.0-min(1.0,mc["probability_ruin"])))));
+                    item["monte_carlo_robustness"]=max(0.0,min(100.0,100.0*(0.5*mc["probability_positive"]+0.5*(1.0-min(1.0,mc["probability_ruin"])))));
                     if log_callback: log_callback(f"[MC {rank}] {item['candidate'].name} | P(Positive)={mc['probability_positive']:.1%} | P(Ruin)={mc['probability_ruin']:.1%} | P05 NetR={mc['p05_net_r']:.2f} | P95 DD={mc['p95_max_drawdown_r']:.2f}")
-                else:
-                    item["monte_carlo_robustness"]=0.0
+                else: item["monte_carlo_robustness"]=0.0
             self.last_ranked.sort(key=lambda x:(x.get("monte_carlo_robustness",0.0),x.get("walk_forward_score",0.0)),reverse=True)
             if log_callback: log_callback("[MONTE CARLO] Finished. Final ranking updated with robustness evidence.")
+        if self.config.sensitivity_enabled and self.last_ranked and not stop_event.is_set():
+            if log_callback: log_callback(f"[SENSITIVITY] Started for TOP {min(self.config.sensitivity_top_n,len(self.last_ranked))} strategies")
+            for rank,item in enumerate(self.last_ranked[:self.config.sensitivity_top_n],1):
+                if stop_event.is_set(): break
+                item["parameter_sensitivity"]=self._run_sensitivity(item,test_data,stop_event,log_callback)
+                sensitivity_values=[x.get("robustness",False) for x in item.get("parameter_sensitivity",{}).values()]
+                pass_rates=[float(x.get("pass_rate",0.0)) for x in item.get("parameter_sensitivity",{}).values()]
+                item["sensitivity_robustness"]=100.0*sum(pass_rates)/len(pass_rates) if pass_rates else 0.0
+            self.last_ranked.sort(key=lambda x:(x.get("sensitivity_robustness",0.0),x.get("monte_carlo_robustness",0.0),x.get("walk_forward_score",0.0)),reverse=True)
+            if log_callback: log_callback("[SENSITIVITY] Finished. Ranking updated for parameter stability.")
         self.last_results=results
         if self.config.export_results and not stop_event.is_set() and self.last_ranked:
             try:
