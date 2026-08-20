@@ -1,7 +1,6 @@
 """Main GUI composition for XAU Strategy Researcher Pro."""
 import platform
 import threading
-import datetime as dt
 import tkinter as tk
 from tkinter import ttk
 
@@ -85,6 +84,8 @@ class MainWindow(ttk.Frame):
             return
         self.status.set("Timeframe", timeframe)
         self.status.set("Historical Data", "Loading...")
+        self.progress.set_phase("DATA")
+        self.progress.update_progress(0, 1, "Loading historical data...")
         self.write("=======================================", "DATA")
         self.write(f"LOAD DATA started: XAUUSD {timeframe}, bars={bars}", "DATA")
 
@@ -102,6 +103,7 @@ class MainWindow(ttk.Frame):
                 self.status.set("Historical Data", "Loaded ✓")
                 self.status.set("Number of Bars", str(len(frame)))
                 self.status.set("Last Bar Time", last_dt)
+                self.after(0, lambda: self.progress.update_progress(1, 1, f"Bars loaded: {len(frame)}"))
                 self.write(f"Historical data loaded ✓ — {len(frame)} bars", "DATA")
                 self.write(f"Last bar: {last_dt}", "DATA")
             except Exception as exc:
@@ -124,37 +126,46 @@ class MainWindow(ttk.Frame):
             return
         self.stop_event.clear()
         total = self.engine.config.max_candidates
+        self.progress.set_phase("RESEARCH")
         self.progress.update_progress(0, total)
         self.write("=======================================", "RESEARCH")
         self.write("Started", "RESEARCH")
         self.write(f"Candidates: {total}", "RESEARCH")
 
         def progress(current, count):
-            self.after(0, lambda: self.progress.update_progress(current, count))
+            self.after(0, lambda: self.progress.update_progress(current, count, f"Candidates: {current} / {count}"))
 
         def log(message):
-            self.write(message, "TEST")
+            msg = str(message)
+            if msg.startswith("[WALK-FORWARD]"):
+                self.after(0, lambda: self.progress.set_phase("WALK-FORWARD"))
+            elif msg.startswith("[RESULT]"):
+                self.after(0, lambda: self.progress.set_phase("RANKING"))
+            elif msg.startswith("Candidate"):
+                self.after(0, lambda: self.progress.set_phase("TRAIN / TEST"))
+            self.write(msg, "TEST" if msg.startswith("Candidate") else "RESEARCH")
 
         def worker():
             try:
                 ranked = self.engine.run_research(self.loaded_data, stop_event=self.stop_event, progress_callback=progress, log_callback=log)
                 if self.stop_event.is_set():
                     self.write("Research stopped by user.", "RESEARCH")
+                    self.after(0, lambda: self.progress.set_phase("STOPPED"))
                 else:
                     self.write("Research finished.", "RESEARCH")
                     self.write(f"Ranked strategies: {len(ranked)}", "RESULT")
+                    self.after(0, lambda: self.progress.set_phase("FINISHED"))
+                    self.after(0, lambda: self.progress.update_progress(total, total, f"Final strategies: {len(ranked)}"))
                     if ranked:
                         best = ranked[0]
-                        self.write(
-                            f"Best strategy: {best.get('strategy_name', 'N/A')} | "
-                            f"Score={best.get('ranking_score', 0):.2f} | "
-                            f"PF={best.get('profit_factor', 0):.2f} | "
-                            f"NetR={best.get('net_r', 0):.2f} | "
-                            f"DD={best.get('max_drawdown_pct', 0):.2f}%",
-                            "RESULT",
-                        )
+                        name = getattr(best.get("candidate"), "name", None) or best.get("strategy_name", "N/A")
+                        score = best.get("walk_forward_score", best.get("validation_score", best.get("ranking_score", 0)))
+                        pf = best.get("oos_pf_mean", best.get("profit_factor", 0))
+                        netr = best.get("oos_net_r_sum", best.get("net_r", 0))
+                        self.write(f"Best strategy: {name} | Score={score:.2f} | AvgPF={pf:.2f} | OOS NetR={netr:.2f}", "RESULT")
             except Exception as exc:
                 self.write(f"Research failed: {exc}", "ERROR")
+                self.after(0, lambda: self.progress.set_phase("ERROR"))
             finally:
                 self.research_thread = None
 
@@ -166,7 +177,7 @@ class MainWindow(ttk.Frame):
             self.write("No research is currently running.", "RESEARCH")
             return
         self.stop_event.set()
-        self.write("STOP requested. Worker will stop at the next candidate checkpoint.", "RESEARCH")
+        self.write("STOP requested. Worker will stop at the next checkpoint.", "RESEARCH")
 
 
 def run_app():
