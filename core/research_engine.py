@@ -28,9 +28,10 @@ class ResearchConfig:
     min_oos_trades: int = 10
     top_n_oos: int = 20
     walk_forward_enabled: bool = True
-    walk_forward_train_bars: int = 30000
-    walk_forward_test_bars: int = 10000
-    walk_forward_step_bars: int = 10000
+    # Sized for a 50k-bar research set: 6 rolling OOS windows instead of only 2.
+    walk_forward_train_bars: int = 20_000
+    walk_forward_test_bars: int = 5_000
+    walk_forward_step_bars: int = 5_000
     walk_forward_min_test_trades: int = 10
     top_n_walk_forward: int = 10
     monte_carlo_enabled: bool = True
@@ -119,7 +120,7 @@ class ResearchEngine:
             if p in ("ema_fast", "ema_slow", "rsi_period"): parameter_grid[p] = self._nearby_values(v, 2, 500, 5 if p != "rsi_period" else 1)
             elif p in ("rsi_buy", "rsi_sell"): parameter_grid[p] = self._nearby_values(v, 20, 80, 2)
             elif p == "atr_sl": parameter_grid[p] = self._nearby_values(v, 0.5, 4.0, 0.25)
-            elif p == "rr": parameter_grid[p] = self._nearby_values(v, 0.75, 4.0, 0.25)
+            elif p == "rr": parameter_grid[p] = self._nearby_values(v, 0.75, 2.2, 0.25)
         sensitivity = ParameterSensitivity(SensitivityConfig(minimum_pf=self.config.sensitivity_min_pf, minimum_expectancy=self.config.sensitivity_min_expectancy, minimum_pass_rate=self.config.sensitivity_min_pass_rate))
         output = {}
         for parameter, values in parameter_grid.items():
@@ -134,14 +135,11 @@ class ResearchEngine:
     def _run_regime_analysis(self, item, data, stop_event, log_callback=None):
         if not self.config.regime_enabled or stop_event.is_set(): return None
         try:
-            regimes = detect_regimes(data)
-            candidate = item["candidate"]
+            regimes = detect_regimes(data); candidate = item["candidate"]
             def evaluator(subset):
                 if stop_event.is_set(): return {"trade_count": 0, "net_r": 0.0, "profit_factor": 0.0, "max_drawdown_r": 0.0}
                 return self.evaluate_spec(subset, candidate)
-            results = analyze_regimes(data, regimes, evaluator)
-            valid = [r for r in results if int(r.get("trade_count", 0)) >= self.config.regime_min_trade_count]
-            score = regime_robustness_score(valid)
+            results = analyze_regimes(data, regimes, evaluator); valid = [r for r in results if int(r.get("trade_count", 0)) >= self.config.regime_min_trade_count]; score = regime_robustness_score(valid)
             if log_callback: log_callback(f"[REGIME] {candidate.name} | Score={score:.2f} | Regimes={len(valid)}")
             return {"results": results, "robustness_score": score}
         except Exception as exc:
@@ -195,23 +193,20 @@ class ResearchEngine:
             if log_callback: log_callback(f"[SENSITIVITY] Started for TOP {min(self.config.sensitivity_top_n, len(self.last_ranked))} strategies")
             for item in self.last_ranked[: self.config.sensitivity_top_n]:
                 if stop_event.is_set(): break
-                item["parameter_sensitivity"] = self._run_sensitivity(item, test_data, stop_event, log_callback)
-                values = [float(x.get("pass_rate", 0.0)) for x in item.get("parameter_sensitivity", {}).values()]
-                item["sensitivity_robustness"] = 100.0 * sum(values) / len(values) if values else 0.0
+                item["parameter_sensitivity"] = self._run_sensitivity(item, test_data, stop_event, log_callback); values = [float(x.get("pass_rate", 0.0)) for x in item.get("parameter_sensitivity", {}).values()]; item["sensitivity_robustness"] = 100.0 * sum(values) / len(values) if values else 0.0
             self.last_ranked.sort(key=lambda x: (x.get("sensitivity_robustness", 0.0), x.get("monte_carlo_robustness", 0.0), x.get("walk_forward_score", 0.0)), reverse=True)
             if log_callback: log_callback("[SENSITIVITY] Finished.")
         if self.config.regime_enabled and self.last_ranked and not stop_event.is_set():
             if log_callback: log_callback(f"[REGIME] Started for TOP {len(self.last_ranked)} strategies")
             for item in self.last_ranked:
                 if stop_event.is_set(): break
-                item["market_regime"] = self._run_regime_analysis(item, data, stop_event, log_callback)
-                item["regime_robustness"] = float(item["market_regime"].get("robustness_score", 0.0)) if item.get("market_regime") else 0.0
+                item["market_regime"] = self._run_regime_analysis(item, data, stop_event, log_callback); item["regime_robustness"] = float(item["market_regime"].get("robustness_score", 0.0)) if item.get("market_regime") else 0.0
             self.last_ranked.sort(key=lambda x: (x.get("regime_robustness", 0.0), x.get("sensitivity_robustness", 0.0), x.get("monte_carlo_robustness", 0.0), x.get("walk_forward_score", 0.0)), reverse=True)
             if log_callback: log_callback("[REGIME] Finished. Final robustness ranking updated.")
         self.last_results = results
         if self.config.export_results and not stop_event.is_set() and self.last_ranked:
             try:
-                self.last_exports = export_results(self.last_ranked, Path(self.config.results_dir))
+                self.last_exports = export_results(self.last_ranked, Path(self.config.results_dir));
                 if log_callback: log_callback(f"[EXPORT] Results saved to {self.config.results_dir}/")
             except Exception as exc:
                 if log_callback: log_callback(f"[EXPORT] Failed: {exc}")
