@@ -1,8 +1,7 @@
-"""Top-level orchestration for the modular XAU research pipeline."""
+"""Top-level orchestration for modular XAU strategy research."""
 from dataclasses import dataclass
 from threading import Event
 from typing import Any, Callable, Dict, List, Optional
-
 import pandas as pd
 
 from .backtester import BacktestConfig, Backtester
@@ -11,6 +10,8 @@ from .signal_engine import SignalEngine
 from .strategy_generator import StrategyGenerator, StrategySpec
 from .validation.train_test import chronological_split
 from .validation.validator import validation_score
+from .validation.walk_forward import evaluate_walk_forward
+from .validation.walk_forward_score import walk_forward_score
 
 
 @dataclass
@@ -23,6 +24,12 @@ class ResearchConfig:
     min_train_trades: int = 30
     min_oos_trades: int = 10
     top_n_oos: int = 20
+    walk_forward_enabled: bool = True
+    walk_forward_train_bars: int = 30000
+    walk_forward_test_bars: int = 10000
+    walk_forward_step_bars: int = 10000
+    walk_forward_min_test_trades: int = 10
+    top_n_walk_forward: int = 10
 
 
 class ResearchEngine:
@@ -30,14 +37,12 @@ class ResearchEngine:
         self.config = config or ResearchConfig()
         self.generator = StrategyGenerator(self.config.max_candidates)
         self.signal_engine = SignalEngine()
-        self.backtester = Backtester(BacktestConfig(
-            initial_balance=self.config.initial_balance,
-            risk_percent=self.config.risk_percent,
-        ))
+        self.backtester = Backtester(BacktestConfig(initial_balance=self.config.initial_balance, risk_percent=self.config.risk_percent))
         self.ranker = StrategyRanker()
         self.last_results: List[Dict[str, Any]] = []
         self.last_ranked: List[Dict[str, Any]] = []
         self.last_oos: List[Dict[str, Any]] = []
+        self.last_walk_forward: List[Dict[str, Any]] = []
 
     def generate_candidates(self) -> List[StrategySpec]:
         return self.generator.generate()
@@ -62,20 +67,8 @@ class ResearchEngine:
         for equity in result.equity_curve:
             peak = max(peak, equity)
             max_dd_cash = max(max_dd_cash, peak - equity)
-        max_dd_pct = (100.0 * max_dd_cash / self.config.initial_balance) if self.config.initial_balance else 0.0
-        return {
-            "final_balance": result.balance,
-            "trade_count": len(trades),
-            "win_rate": win_rate,
-            "profit_factor": pf,
-            "net_r": net_r,
-            "expectancy": expectancy,
-            "max_drawdown": max_dd_cash,
-            "max_drawdown_pct": max_dd_pct,
-            "max_drawdown_r": max_dd_cash / max(self.config.initial_balance * self.config.risk_percent / 100.0, 1e-9),
-            "equity_curve": result.equity_curve,
-            "trades": [t.to_dict() for t in trades],
-        }
+        max_dd_pct = 100.0 * max_dd_cash / self.config.initial_balance if self.config.initial_balance else 0.0
+        return {"final_balance": result.balance, "trade_count": len(trades), "win_rate": win_rate, "profit_factor": pf, "net_r": net_r, "expectancy": expectancy, "max_drawdown": max_dd_cash, "max_drawdown_pct": max_dd_pct, "max_drawdown_r": max_dd_cash / max(self.config.initial_balance * self.config.risk_percent / 100.0, 1e-9), "equity_curve": result.equity_curve, "trades": [t.to_dict() for t in trades]}
 
     def evaluate_spec(self, data: pd.DataFrame, spec: StrategySpec) -> Dict[str, Any]:
         signals, sl_distance = self.signal_engine.build(data, spec)
@@ -85,13 +78,7 @@ class ResearchEngine:
         metrics["strategy"] = spec.to_dict()
         return metrics
 
-    def run_research(
-        self,
-        data: pd.DataFrame,
-        stop_event: Optional[Event] = None,
-        progress_callback: Optional[Callable[[int, int], None]] = None,
-        log_callback: Optional[Callable[[str], None]] = None,
-    ) -> List[Dict[str, Any]]:
+    def run_research(self, data: pd.DataFrame, stop_event: Optional[Event] = None, progress_callback: Optional[Callable[[int, int], None]] = None, log_callback: Optional[Callable[[str], None]] = None) -> List[Dict[str, Any]]:
         if data is None or len(data) < 100:
             raise ValueError("Insufficient historical data. Load at least 100 bars before research.")
         stop_event = stop_event or Event()
@@ -106,56 +93,59 @@ class ResearchEngine:
 
         for index, candidate in enumerate(candidates, start=1):
             if stop_event.is_set():
-                if log_callback:
-                    log_callback(f"STOP detected at candidate {index - 1}/{total}")
+                if log_callback: log_callback(f"STOP detected at candidate {index - 1}/{total}")
                 break
             try:
                 train = self.evaluate_spec(train_data, candidate)
                 if train["trade_count"] < self.config.min_train_trades:
-                    if log_callback:
-                        log_callback(f"Candidate {index}/{total}: rejected TRAIN trades={train['trade_count']} < {self.config.min_train_trades}")
+                    if log_callback: log_callback(f"Candidate {index}/{total}: rejected TRAIN trades={train['trade_count']} < {self.config.min_train_trades}")
                 else:
                     test = self.evaluate_spec(test_data, candidate)
                     if test["trade_count"] < self.config.min_oos_trades:
-                        if log_callback:
-                            log_callback(f"Candidate {index}/{total}: rejected OOS trades={test['trade_count']} < {self.config.min_oos_trades}")
+                        if log_callback: log_callback(f"Candidate {index}/{total}: rejected OOS trades={test['trade_count']} < {self.config.min_oos_trades}")
                     else:
-                        train_net = float(train["net_r"])
-                        test_net = float(test["net_r"])
-                        train_dd = max(float(train["max_drawdown_r"]), 1e-9)
-                        test_dd = max(float(test["max_drawdown_r"]), 1e-9)
-                        validation = {
-                            "candidate": candidate,
-                            "train": train,
-                            "test": test,
-                            "oos_to_train_ratio": test_net / train_net if train_net > 0 else 0.0,
-                            "dd_ratio": test_dd / train_dd,
-                        }
+                        train_net, test_net = float(train["net_r"]), float(test["net_r"])
+                        train_dd, test_dd = max(float(train["max_drawdown_r"]), 1e-9), max(float(test["max_drawdown_r"]), 1e-9)
+                        validation = {"candidate": candidate, "train": train, "test": test, "oos_to_train_ratio": test_net / train_net if train_net > 0 else 0.0, "dd_ratio": test_dd / train_dd}
                         validation["validation_score"] = validation_score(validation)
                         validation["candidate_index"] = index
                         results.append(validation)
-                        if log_callback:
-                            log_callback(
-                                f"Candidate {index}/{total}: TRAIN PF={train['profit_factor']:.2f} "
-                                f"OOS PF={test['profit_factor']:.2f} OOS NetR={test_net:.2f} "
-                                f"Validation={validation['validation_score']:.2f}"
-                            )
+                        if log_callback: log_callback(f"Candidate {index}/{total}: TRAIN PF={train['profit_factor']:.2f} OOS PF={test['profit_factor']:.2f} OOS NetR={test_net:.2f} Validation={validation['validation_score']:.2f}")
             except Exception as exc:
-                if log_callback:
-                    log_callback(f"Candidate {index}/{total} failed: {exc}")
-            if progress_callback:
-                progress_callback(index, total)
+                if log_callback: log_callback(f"Candidate {index}/{total} failed: {exc}")
+            if progress_callback: progress_callback(index, total)
 
         self.last_oos = sorted(results, key=lambda x: x["validation_score"], reverse=True)
-        self.last_results = self.last_oos
         self.last_ranked = self.last_oos[: self.config.top_n_oos]
         if log_callback:
             log_callback(f"TRAIN/TEST validation finished. Accepted OOS strategies: {len(self.last_oos)}")
-            for rank, item in enumerate(self.last_ranked[:5], start=1):
-                s = item["test"]
-                log_callback(
-                    f"[OOS TOP {rank}] {s['strategy_name']} | "
-                    f"Score={item['validation_score']:.2f} | PF={s['profit_factor']:.2f} | "
-                    f"NetR={s['net_r']:.2f} | WR={s['win_rate']:.1f}% | DD={s['max_drawdown_pct']:.2f}%"
-                )
+
+        if self.config.walk_forward_enabled and self.last_ranked and not stop_event.is_set():
+            wf_candidates = [item["candidate"] for item in self.last_ranked]
+            log_callback and log_callback(f"[WALK-FORWARD] Started for TOP {len(wf_candidates)} strategies")
+
+            def evaluate(spec_data: pd.DataFrame, candidate: StrategySpec) -> Dict[str, Any]:
+                if stop_event.is_set():
+                    return {"trade_count": 0, "net_r": 0.0, "profit_factor": 0.0, "max_drawdown_r": 0.0}
+                return self.evaluate_spec(spec_data, candidate)
+
+            self.last_walk_forward = evaluate_walk_forward(
+                data, wf_candidates, evaluate,
+                train_bars=self.config.walk_forward_train_bars,
+                test_bars=self.config.walk_forward_test_bars,
+                step_bars=self.config.walk_forward_step_bars,
+                min_test_trades=self.config.walk_forward_min_test_trades,
+            )
+            for item in self.last_walk_forward:
+                item["walk_forward_score"] = walk_forward_score(item)
+            self.last_walk_forward.sort(key=lambda x: x["walk_forward_score"], reverse=True)
+            self.last_ranked = self.last_walk_forward[: self.config.top_n_walk_forward]
+            if log_callback:
+                log_callback(f"[WALK-FORWARD] Finished. Validated strategies: {len(self.last_walk_forward)}")
+                for rank, item in enumerate(self.last_ranked[:5], 1):
+                    log_callback(f"[WF TOP {rank}] {item['candidate'].name} | Score={item['walk_forward_score']:.2f} | PositiveWindows={item['positive_windows']}/{item['window_count']} | OOS NetR={item['oos_net_r_sum']:.2f} | AvgPF={item['oos_pf_mean']:.2f}")
+            else:
+                log_callback and log_callback("[WALK-FORWARD] No eligible strategies/windows.")
+
+        if progress_callback: progress_callback(total, total)
         return self.last_ranked
