@@ -21,6 +21,21 @@ def _safe(value: Any) -> Any:
     return value if isinstance(value, (str, int, float, bool)) or value is None else str(value)
 
 
+def _final_metrics(item: Dict[str, Any]) -> Dict[str, float]:
+    """Expose every final ranking component without changing the ranking algorithm."""
+    return {
+        "walk_forward_score": float(item.get("walk_forward_score", 0.0)),
+        "monte_carlo_robustness": float(item.get("monte_carlo_robustness", 0.0)),
+        "sensitivity_robustness": float(item.get("sensitivity_robustness", 0.0)),
+        "regime_robustness": float(item.get("regime_robustness", 0.0)),
+    }
+
+
+def _ranking_basis(item: Dict[str, Any]) -> str:
+    """Document the exact lexicographic order used by ResearchEngine."""
+    return "regime_robustness > sensitivity_robustness > monte_carlo_robustness > walk_forward_score"
+
+
 def export_results(results: Iterable[Dict[str, Any]], output_dir: str | Path = "results") -> Dict[str, str]:
     """Write ranked results, trades and strategy rules to separate files."""
     out = Path(output_dir)
@@ -31,18 +46,27 @@ def export_results(results: Iterable[Dict[str, Any]], output_dir: str | Path = "
     json_path.write_text(json.dumps(items, indent=2, ensure_ascii=False), encoding="utf-8")
 
     csv_path = out / "ranked_strategies.csv"
-    columns = ["rank", "strategy_name", "score", "walk_forward_score", "validation_score", "oos_pf_mean", "oos_net_r_sum", "positive_windows", "window_count"]
+    columns = [
+        "rank", "strategy_name", "final_ranking_basis", "score", "walk_forward_score",
+        "monte_carlo_robustness", "sensitivity_robustness", "regime_robustness",
+        "validation_score", "oos_pf_mean", "oos_net_r_sum", "positive_windows", "window_count"
+    ]
     with csv_path.open("w", newline="", encoding="utf-8-sig") as fh:
         writer = csv.DictWriter(fh, fieldnames=columns)
         writer.writeheader()
         for rank, item in enumerate(items, 1):
             candidate = item.get("candidate", {})
             name = candidate.get("name", item.get("strategy_name", "")) if isinstance(candidate, dict) else str(candidate)
+            metrics = _final_metrics(item)
             writer.writerow({
                 "rank": rank,
                 "strategy_name": name,
-                "score": item.get("ranking_score", item.get("walk_forward_score", item.get("validation_score", 0))),
-                "walk_forward_score": item.get("walk_forward_score", 0),
+                "final_ranking_basis": _ranking_basis(item),
+                "score": item.get("ranking_score", metrics["walk_forward_score"]),
+                "walk_forward_score": metrics["walk_forward_score"],
+                "monte_carlo_robustness": metrics["monte_carlo_robustness"],
+                "sensitivity_robustness": metrics["sensitivity_robustness"],
+                "regime_robustness": metrics["regime_robustness"],
                 "validation_score": item.get("validation_score", 0),
                 "oos_pf_mean": item.get("oos_pf_mean", 0),
                 "oos_net_r_sum": item.get("oos_net_r_sum", 0),
