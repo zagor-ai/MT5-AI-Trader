@@ -15,133 +15,18 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Create v2.1.1 from the full v2.1 source
-        shell: bash
+      - name: Build complete v2.1.1
+        run: python3 .github/scripts/build_xau_v211.py
+
+      - name: Validate generated source
         run: |
-          set -e
-          SRC="XAU_Strategy_Researcher_Pro_v2.1.py"
-          OUT="XAU_Strategy_Researcher_Pro_v2.1.1.py"
+          test -f XAU_Strategy_Researcher_Pro_v2.1.1.py
+          lines=$(wc -l < XAU_Strategy_Researcher_Pro_v2.1.1.py)
+          echo "Generated Python lines: $lines"
+          test "$lines" -ge 1000
+          python3 -m py_compile XAU_Strategy_Researcher_Pro_v2.1.1.py
 
-          test -f "$SRC"
-          cp "$SRC" "$OUT"
-
-          python3 - <<'PY'
-          from pathlib import Path
-          import re
-
-          src = Path('XAU_Strategy_Researcher_Pro_v2.1.1.py')
-          text = src.read_text(encoding='utf-8')
-
-          # Version bump only; preserve the complete original application.
-          text = re.sub(r'(VERSION\s*=\s*["\'])2\.1(?:\.0)?(["\'])', r'\g<1>2.1.1\2', text, count=1)
-          text = re.sub(r'(__version__\s*=\s*["\'])2\.1(?:\.0)?(["\'])', r'\g<1>2.1.1\2', text, count=1)
-
-          # Replace only the MT5 historical loader body when the known method
-          # exists. The generated file remains the complete v2.1 application.
-          pattern = re.compile(r'(?ms)^(\s*def load_rates\(self,.*?\n)(?=\s*def |\s*class |\Z)')
-          m = pattern.search(text)
-          if not m:
-              raise SystemExit('Could not locate load_rates() in the full v2.1 source; refusing to create a partial file.')
-
-          indent = re.match(r'\s*', m.group(1)).group(0)
-          method = '''{indent}def load_rates(self, symbol, timeframe, start_date, end_date):
-{indent}    """Load historical rates in bounded chunks with diagnostics.
-{indent}
-{indent}    Research-only: this method only reads market data and never sends orders.
-{indent}    """
-{indent}    import pandas as pd
-{indent}    from datetime import timedelta
-
-{indent}    if not self.connected:
-{indent}        self.log("[DATA] MT5 is not connected.", "ERROR")
-{indent}        return None
-
-{indent}    self.log(f"[DATA] Requesting {symbol} {timeframe}: {start_date} -> {end_date}", "DATA")
-{indent}    start = pd.Timestamp(start_date).to_pydatetime()
-{indent}    end = pd.Timestamp(end_date).to_pydatetime()
-{indent}    if end <= start:
-{indent}        self.log("[DATA] Invalid date range: end must be after start.", "ERROR")
-{indent}        return None
-
-{indent}    chunk_days = 60
-{indent}    chunks = []
-{indent}    cursor = start
-{indent}    total_chunks = max(1, ((end - start).days + chunk_days - 1) // chunk_days)
-{indent}    index = 0
-
-{indent}    while cursor < end:
-{indent}        index += 1
-{indent}        chunk_end = min(cursor + timedelta(days=chunk_days), end)
-{indent}        self.log(f"[DATA] Chunk {{index}}/{{total_chunks}}: {{cursor}} -> {{chunk_end}}", "DATA")
-
-{indent}        rates = mt5.copy_rates_range(symbol, timeframe, cursor, chunk_end)
-{indent}        if rates is None:
-{indent}            err = mt5.last_error()
-{indent}            self.log(f"[DATA] Chunk {{index}} failed: {{err}}", "WARN")
-{indent}            # Retry the failed chunk as 7-day windows. This avoids large
-{indent}            # requests being rejected by the terminal/history settings.
-{indent}            sub_cursor = cursor
-{indent}            sub_days = 7
-{indent}            while sub_cursor < chunk_end:
-{indent}                sub_end = min(sub_cursor + timedelta(days=sub_days), chunk_end)
-{indent}                sub_rates = mt5.copy_rates_range(symbol, timeframe, sub_cursor, sub_end)
-{indent}                if sub_rates is not None and len(sub_rates):
-{indent}                    chunks.append(sub_rates)
-{indent}                    self.log(f"[DATA] Retry {{sub_cursor}} -> {{sub_end}}: {{len(sub_rates)}} bars ✓", "DATA")
-{indent}                else:
-{indent}                    self.log(f"[DATA] Retry {{sub_cursor}} -> {{sub_end}}: no data ({mt5.last_error()})", "WARN")
-{indent}                sub_cursor = sub_end
-{indent}        elif len(rates):
-{indent}            chunks.append(rates)
-{indent}            self.log(f"[DATA] Chunk {{index}}: {{len(rates)}} bars ✓", "DATA")
-{indent}        else:
-{indent}            self.log(f"[DATA] Chunk {{index}} returned 0 bars.", "WARN")
-
-{indent}        cursor = chunk_end
-
-{indent}    if not chunks:
-{indent}        err = mt5.last_error()
-{indent}        self.log(f"[DATA] No historical data returned. Last error: {{err}}", "ERROR")
-{indent}        return None
-
-{indent}    self.log("[DATA] Combining historical chunks...", "DATA")
-{indent}    df = pd.DataFrame(np.concatenate(chunks))
-{indent}    if df.empty:
-{indent}        self.log("[DATA] Combined dataset is empty.", "ERROR")
-{indent}        return None
-
-{indent}    if 'time' in df.columns:
-{indent}        df['time'] = pd.to_datetime(df['time'], unit='s', utc=True)
-{indent}        df = df.drop_duplicates(subset=['time']).sort_values('time').reset_index(drop=True)
-{indent}
-{indent}    before = len(df)
-{indent}    required = [c for c in ('open', 'high', 'low', 'close') if c in df.columns]
-{indent}    if required:
-{indent}        df = df.dropna(subset=required)
-{indent}        df = df[(df['high'] >= df['low']) & (df['high'] >= df['open']) & (df['high'] >= df['close']) & (df['low'] <= df['open']) & (df['low'] <= df['close'])]
-{indent}    removed = before - len(df)
-{indent}
-{indent}    self.log(f"[DATA] Valid bars: {{len(df)}} ✓", "DATA")
-{indent}    if removed:
-{indent}        self.log(f"[DATA] Invalid/duplicate rows removed: {{removed}}", "DATA")
-{indent}    if 'time' in df.columns:
-{indent}        self.log(f"[DATA] First bar: {{df['time'].iloc[0]}}", "DATA")
-{indent}        self.log(f"[DATA] Last bar: {{df['time'].iloc[-1]}}", "DATA")
-{indent}    self.log("[DATA] Historical data load completed ✓", "DATA")
-{indent}    return df
-'''.format(indent=indent)
-
-          text = text[:m.start()] + method + text[m.end():]
-          src.write_text(text, encoding='utf-8')
-
-          # Safety checks: never publish a suspiciously small replacement.
-          lines = len(text.splitlines())
-          if lines < 1000:
-              raise SystemExit(f'Refusing to publish: generated file has only {lines} lines.')
-          print(f'Generated {src} with {lines} lines')
-          PY
-
-      - name: Create Python 3.12 launcher BAT
+      - name: Create Python 3.12 BAT launcher
         shell: bash
         run: |
           cat > Run_XAU_Strategy_Researcher_Pro_v2.1.1.bat <<'BAT'
@@ -153,28 +38,26 @@ jobs:
           echo       XAU STRATEGY RESEARCHER PRO v2.1.1
           echo ============================================================
           echo.
-          echo [INFO] Working directory: %CD%
           echo [INFO] Checking Python 3.12...
-          set "PY=py -3.12"
-          %PY% --version >nul 2>nul
-          if errorlevel 1 (
-              echo [ERROR] Python 3.12 was not found.
-              echo Run: py -0p
-              pause
-              exit /b 1
+          py -3.12 --version >nul 2>nul
+          if errorlevel 1 goto PYTHON_FALLBACK
+          set "PYTHON_EXE=py -3.12"
+          goto RUN
+          :PYTHON_FALLBACK
+          if exist "%LocalAppData%\Programs\Python\Python312\python.exe" (
+              set "PYTHON_EXE=%LocalAppData%\Programs\Python\Python312\python.exe"
+              goto RUN
           )
-          echo [OK] Python 3.12 found.
-          %PY% -m pip --version >nul 2>nul
-          if errorlevel 1 (
-              echo [ERROR] pip is not available for Python 3.12.
-              pause
-              exit /b 1
-          )
-          echo [INFO] Checking required packages...
-          %PY% -c "import numpy,pandas,MetaTrader5; print('Packages: OK')" >nul 2>nul
+          echo [ERROR] Python 3.12 was not found.
+          py -0p
+          pause
+          exit /b 1
+          :RUN
+          %PYTHON_EXE% --version
+          %PYTHON_EXE% -c "import MetaTrader5, pandas, numpy; print('[OK] Required packages available.')"
           if errorlevel 1 (
               echo [INFO] Installing required packages...
-              %PY% -m pip install numpy pandas MetaTrader5
+              %PYTHON_EXE% -m pip install MetaTrader5 pandas numpy
               if errorlevel 1 (
                   echo [ERROR] Package installation failed.
                   pause
@@ -182,36 +65,20 @@ jobs:
               )
           )
           if not exist "XAU_Strategy_Researcher_Pro_v2.1.1.py" (
-              echo [ERROR] XAU_Strategy_Researcher_Pro_v2.1.1.py not found.
+              echo [ERROR] Application file not found.
               pause
               exit /b 1
           )
-          echo [INFO] Starting Researcher...
-          echo [INFO] Research-only mode. No real orders will be sent.
-          echo.
-          %PY% "XAU_Strategy_Researcher_Pro_v2.1.1.py"
-          set "RC=%ERRORLEVEL%"
-          echo.
-          echo [INFO] Application exited with code %RC%.
+          echo [INFO] Starting research-only application...
+          %PYTHON_EXE% "XAU_Strategy_Researcher_Pro_v2.1.1.py"
           pause
-          exit /b %RC%
           BAT
 
-      - name: Verify generated files
-        shell: bash
+      - name: Validate BAT and commit generated files
         run: |
-          test -f XAU_Strategy_Researcher_Pro_v2.1.1.py
           test -f Run_XAU_Strategy_Researcher_Pro_v2.1.1.bat
-          lines=$(wc -l < XAU_Strategy_Researcher_Pro_v2.1.1.py)
-          echo "Python lines: $lines"
-          test "$lines" -ge 1000
-          grep -q "def load_rates" XAU_Strategy_Researcher_Pro_v2.1.1.py
-
-      - name: Commit generated v2.1.1 files
-        shell: bash
-        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add XAU_Strategy_Researcher_Pro_v2.1.1.py Run_XAU_Strategy_Researcher_Pro_v2.1.1.bat
-          git diff --cached --quiet || git commit -m "Build complete XAU Strategy Researcher v2.1.1"
-          git push origin HEAD
+          git diff --cached --quiet && echo "No generated changes." || git commit -m "Build complete XAU Strategy Researcher v2.1.1"
+          git push origin HEAD:feature/xau-researcher-v2.1.1-data-loader
