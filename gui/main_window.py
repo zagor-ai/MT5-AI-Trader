@@ -28,12 +28,7 @@ class MainWindow(ttk.Frame):
     def _build(self):
         self.status = StatusPanel(self)
         self.status.pack(fill="x", padx=8, pady=8)
-        self.controls = ControlsPanel(self, callbacks={
-            "connect": self.connect_mt5,
-            "load_data": self.load_data,
-            "start": self.start_research,
-            "stop": self.stop_research,
-        })
+        self.controls = ControlsPanel(self, callbacks={"connect": self.connect_mt5, "load_data": self.load_data, "start": self.start_research, "stop": self.stop_research})
         self.controls.pack(fill="x", padx=8, pady=(0, 8))
         self.progress = ProgressPanel(self)
         self.progress.pack(fill="x", padx=8, pady=(0, 8))
@@ -47,7 +42,7 @@ class MainWindow(ttk.Frame):
         self.write("Application started.")
         self.write(f"Python version: {platform.python_version()}")
         try:
-            import MetaTrader5  # noqa: F401
+            import MetaTrader5
             self.status.set("Python", platform.python_version())
             self.status.set("MetaTrader5 Package", "OK ✓")
             self.write("MetaTrader5 package: OK ✓")
@@ -96,16 +91,15 @@ class MainWindow(ttk.Frame):
         def worker():
             try:
                 rates = self.connector.load_rates(timeframe, bars)
-                count = len(rates)
-                if count == 0:
+                if len(rates) == 0:
                     raise RuntimeError("MT5 returned zero bars.")
                 last_time = int(rates[-1]["time"])
                 last_dt = dt.datetime.fromtimestamp(last_time).strftime("%Y-%m-%d %H:%M:%S")
                 self.loaded_data = rates
                 self.status.set("Historical Data", "Loaded ✓")
-                self.status.set("Number of Bars", str(count))
+                self.status.set("Number of Bars", str(len(rates)))
                 self.status.set("Last Bar Time", last_dt)
-                self.write(f"Historical data loaded ✓ — {count} bars", "DATA")
+                self.write(f"Historical data loaded ✓ — {len(rates)} bars", "DATA")
                 self.write(f"Last bar: {last_dt}", "DATA")
             except Exception as exc:
                 self.loaded_data = None
@@ -126,37 +120,29 @@ class MainWindow(ttk.Frame):
             self.write("Research is already running.", "RESEARCH")
             return
         self.stop_event.clear()
-        self.progress.update_progress(0, self.engine.config.max_candidates)
+        total = self.engine.config.max_candidates
+        self.progress.update_progress(0, total)
         self.write("=======================================", "RESEARCH")
         self.write("Started", "RESEARCH")
-        self.write(f"Candidates: {self.engine.config.max_candidates}", "RESEARCH")
+        self.write(f"Candidates: {total}", "RESEARCH")
 
-        def progress(current, total):
-            self.after(0, lambda: self.progress.update_progress(current, total))
+        def progress(current, count):
+            self.after(0, lambda: self.progress.update_progress(current, count))
 
         def log(message):
             self.write(message, "TEST")
 
-        def runner(candidate, data):
-            # Candidate-to-signal translation is intentionally isolated here.
-            # The current engine's generator/backtester API will be wired to the
-            # selected strategy rules in the next research-integration step.
-            return {"candidate": str(candidate), "status": "GENERATED"}
-
         def worker():
             try:
-                results = self.engine.run_research(
-                    self.loaded_data,
-                    runner,
-                    stop_event=self.stop_event,
-                    progress_callback=progress,
-                    log_callback=log,
-                )
+                results = self.engine.run_research(self.loaded_data, stop_event=self.stop_event, progress_callback=progress, log_callback=log)
                 if self.stop_event.is_set():
                     self.write("Research stopped by user.", "RESEARCH")
                 else:
                     self.write("Research finished.", "RESEARCH")
-                    self.write(f"Results generated: {len(results)}", "RESULT")
+                    self.write(f"Completed candidates: {len(results)}", "RESULT")
+                    if results:
+                        best = max(results, key=lambda x: (float(x.get("profit_factor", 0)), float(x.get("net_r", 0))))
+                        self.write(f"Best strategy: {best.get('strategy_name', 'N/A')} | PF={best.get('profit_factor', 0):.2f} | NetR={best.get('net_r', 0):.2f}", "RESULT")
             except Exception as exc:
                 self.write(f"Research failed: {exc}", "ERROR")
             finally:
