@@ -1,4 +1,4 @@
-"""Final research result panel with one-click copy."""
+"""Compact final research result panel with one-click copy."""
 import tkinter as tk
 from tkinter import ttk
 
@@ -7,9 +7,11 @@ class ResultPanel(ttk.LabelFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, text="FINAL RESEARCH RESULT", **kwargs)
         self.value = "No research completed yet."
-        self.text = tk.Text(self, height=8, wrap="word", state="disabled")
-        self.text.pack(fill="both", expand=True, padx=6, pady=(6, 4))
-        ttk.Button(self, text="COPY FINAL RESULT", command=self.copy_result).pack(anchor="e", padx=6, pady=(0, 6))
+        body = ttk.Frame(self)
+        body.pack(fill="x", padx=6, pady=3)
+        self.text = tk.Text(body, height=3, wrap="none", state="disabled")
+        self.text.pack(side="left", fill="x", expand=True)
+        ttk.Button(body, text="COPY FINAL RESULT", command=self.copy_result).pack(side="right", padx=(8, 0), anchor="n")
 
     def set_result(self, result: dict):
         self.value = self._format(result)
@@ -44,18 +46,10 @@ class ResultPanel(ttk.LabelFrame):
         netr = item.get("oos_net_r_sum", item.get("net_r"))
         windows = item.get("window_count")
         positive = item.get("positive_windows")
-        return ("=" * 56 + "\n"
-                "XAU STRATEGY RESEARCH — FINAL RESULT\n"
-                "=" * 56 + "\n"
-                f"Strategy       : {name}\n"
-                f"Direction      : {direction}\n"
-                f"Final Ranking  : #1\n"
-                f"Walk-Forward   : {cls._num(wf)}\n"
-                f"Monte Carlo    : {cls._num(mc)}\n"
-                f"Sensitivity    : {cls._num(sens)}\n"
-                f"Market Regime  : {cls._num(regime)}\n"
-                f"Validation     : {cls._num(validation)}\n"
-                f"OOS PF         : {cls._num(pf)}\n"
-                f"OOS Net R      : {cls._num(netr)}\n"
-                f"WF Windows     : {positive if positive is not None else '—'} / {windows if windows is not None else '—'}\n"
-                "=" * 56)
+        return (
+            f"Strategy: {name} | Direction: {direction} | WF: {cls._num(wf)} | MC: {cls._num(mc)} | "
+            f"Sensitivity: {cls._num(sens)} | Regime: {cls._num(regime)}\n"
+            f"Validation: {cls._num(validation)} | OOS PF: {cls._num(pf)} | OOS Net R: {cls._num(netr)} | "
+            f"WF Windows: {positive if positive is not None else '—'}/{windows if windows is not None else '—'}\n"
+            "Use COPY FINAL RESULT to send the complete result."
+        )
