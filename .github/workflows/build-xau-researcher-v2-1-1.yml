@@ -1,0 +1,83 @@
+name: Build XAU Strategy Researcher v2.1.1
+
+on:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate source exists
+        shell: bash
+        run: |
+          set -e
+          test -f XAU_Strategy_Researcher_Pro_v2.1.py
+          lines=$(wc -l < XAU_Strategy_Researcher_Pro_v2.1.py)
+          echo "Source lines: $lines"
+          if [ "$lines" -lt 1000 ]; then
+            echo "ERROR: source file is unexpectedly short"
+            exit 1
+          fi
+
+      - name: Validate Python syntax
+        shell: bash
+        run: |
+          set -e
+          python -m py_compile XAU_Strategy_Researcher_Pro_v2.1.py
+
+      - name: Build v2.1.1 copy
+        shell: bash
+        run: |
+          set -e
+          cp XAU_Strategy_Researcher_Pro_v2.1.py XAU_Strategy_Researcher_Pro_v2.1.1.py
+          sed -i 's/v2\.1/v2.1.1/g' XAU_Strategy_Researcher_Pro_v2.1.1.py
+          lines=$(wc -l < XAU_Strategy_Researcher_Pro_v2.1.1.py)
+          echo "Generated lines: $lines"
+          if [ "$lines" -lt 1000 ]; then
+            echo "ERROR: generated file is unexpectedly short"
+            exit 1
+          fi
+          python -m py_compile XAU_Strategy_Researcher_Pro_v2.1.1.py
+
+      - name: Create Python 3.12 BAT launcher
+        shell: bash
+        run: |
+          cat > Run_XAU_Strategy_Researcher_Pro_v2.1.1.bat <<'EOF'
+          @echo off
+          setlocal
+          cd /d "%~dp0"
+          title XAU Strategy Researcher Pro v2.1.1
+          echo ============================================================
+          echo       XAU STRATEGY RESEARCHER PRO v2.1.1
+          echo ============================================================
+          echo.
+          echo [INFO] Checking Python 3.12...
+          py -3.12 --version
+          if errorlevel 1 (
+              echo [ERROR] Python 3.12 was not found.
+              pause
+              exit /b 1
+          )
+          echo.
+          echo [INFO] Checking required packages...
+          py -3.12 -c "import numpy,pandas,MetaTrader5; print('Packages: OK')"
+          if errorlevel 1 (
+              echo [INFO] Installing required packages...
+              py -3.12 -m pip install numpy pandas MetaTrader5
+              if errorlevel 1 (
+                  echo [ERROR] Package installation failed.
+                  pause
+                  exit /b 1
+              )
+          )
+          echo.
+          echo [INFO] Starting Researcher...
+          py -3.12 "%~dp0XAU_Strategy_Researcher_Pro_v2.1.1.py"
+          echo.
+          echo [INFO] Researcher exited with code %ERRORLEVEL%.
+          pause
+          EOF
+          echo BAT created.
