@@ -1,11 +1,11 @@
 {
-  "name": "SELL_EMA_RSI_ATR_0156",
+  "name": "SELL_EMA_RSI_ATR_0166",
   "direction": "SELL",
   "indicators": {
     "ema_fast": 20,
     "ema_slow": 100,
-    "rsi_period": 14,
-    "rsi_buy": 50,
+    "rsi_period": 12,
+    "rsi_buy": 55,
     "rsi_sell": 50,
     "atr_period": 14
   },
@@ -18,7 +18,7 @@
     },
     {
       "type": "RSI_RANGE",
-      "period": 14,
+      "period": 12,
       "min": 30,
       "max": 50
     }
@@ -30,11 +30,11 @@
     },
     {
       "type": "RR_TP",
-      "rr": 2.5
+      "rr": 2.2
     }
   ],
   "risk": {
     "atr_sl": 1.0,
-    "rr": 2.5
+    "rr": 2.2
   }
 }
