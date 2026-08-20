@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from threading import Event
 from typing import Any, Callable, Dict, List, Optional
 import pandas as pd
-
 from .backtester import BacktestConfig, Backtester
 from .ranking import StrategyRanker
 from .signal_engine import SignalEngine
@@ -12,7 +11,6 @@ from .validation.train_test import chronological_split
 from .validation.validator import validation_score
 from .validation.walk_forward import evaluate_walk_forward
 from .validation.walk_forward_score import walk_forward_score
-
 
 @dataclass
 class ResearchConfig:
@@ -30,7 +28,6 @@ class ResearchConfig:
     walk_forward_step_bars: int = 10000
     walk_forward_min_test_trades: int = 10
     top_n_walk_forward: int = 10
-
 
 class ResearchEngine:
     def __init__(self, config: Optional[ResearchConfig] = None):
@@ -78,7 +75,7 @@ class ResearchEngine:
         metrics["strategy"] = spec.to_dict()
         return metrics
 
-    def run_research(self, data: pd.DataFrame, stop_event: Optional[Event] = None, progress_callback: Optional[Callable[[int, int], None]] = None, log_callback: Optional[Callable[[str], None]] = None) -> List[Dict[str, Any]]:
+    def run_research(self, data: pd.DataFrame, stop_event: Optional[Event] = None, progress_callback: Optional[Callable[[int, int], None]] = None, log_callback: Optional[Callable[[str], None]] = None, walk_forward_progress_callback: Optional[Callable[[int, int, int, int], None]] = None) -> List[Dict[str, Any]]:
         if data is None or len(data) < 100:
             raise ValueError("Insufficient historical data. Load at least 100 bars before research.")
         stop_event = stop_event or Event()
@@ -90,7 +87,6 @@ class ResearchEngine:
         if log_callback:
             log_callback(f"Started. Candidates: {total}")
             log_callback(f"TRAIN/TEST split: {len(train_data)}/{len(test_data)} bars ({self.config.train_ratio:.0%}/{1-self.config.train_ratio:.0%})")
-
         for index, candidate in enumerate(candidates, start=1):
             if stop_event.is_set():
                 if log_callback: log_callback(f"STOP detected at candidate {index - 1}/{total}")
@@ -114,28 +110,17 @@ class ResearchEngine:
             except Exception as exc:
                 if log_callback: log_callback(f"Candidate {index}/{total} failed: {exc}")
             if progress_callback: progress_callback(index, total)
-
         self.last_oos = sorted(results, key=lambda x: x["validation_score"], reverse=True)
         self.last_ranked = self.last_oos[: self.config.top_n_oos]
-        if log_callback:
-            log_callback(f"TRAIN/TEST validation finished. Accepted OOS strategies: {len(self.last_oos)}")
-
+        if log_callback: log_callback(f"TRAIN/TEST validation finished. Accepted OOS strategies: {len(self.last_oos)}")
         if self.config.walk_forward_enabled and self.last_ranked and not stop_event.is_set():
             wf_candidates = [item["candidate"] for item in self.last_ranked]
-            log_callback and log_callback(f"[WALK-FORWARD] Started for TOP {len(wf_candidates)} strategies")
-
+            if log_callback: log_callback(f"[WALK-FORWARD] Started for TOP {len(wf_candidates)} strategies")
             def evaluate(spec_data: pd.DataFrame, candidate: StrategySpec) -> Dict[str, Any]:
                 if stop_event.is_set():
                     return {"trade_count": 0, "net_r": 0.0, "profit_factor": 0.0, "max_drawdown_r": 0.0}
                 return self.evaluate_spec(spec_data, candidate)
-
-            self.last_walk_forward = evaluate_walk_forward(
-                data, wf_candidates, evaluate,
-                train_bars=self.config.walk_forward_train_bars,
-                test_bars=self.config.walk_forward_test_bars,
-                step_bars=self.config.walk_forward_step_bars,
-                min_test_trades=self.config.walk_forward_min_test_trades,
-            )
+            self.last_walk_forward = evaluate_walk_forward(data, wf_candidates, evaluate, train_bars=self.config.walk_forward_train_bars, test_bars=self.config.walk_forward_test_bars, step_bars=self.config.walk_forward_step_bars, min_test_trades=self.config.walk_forward_min_test_trades, stop_event=stop_event, progress_callback=walk_forward_progress_callback, log_callback=log_callback)
             for item in self.last_walk_forward:
                 item["walk_forward_score"] = walk_forward_score(item)
             self.last_walk_forward.sort(key=lambda x: x["walk_forward_score"], reverse=True)
@@ -144,8 +129,6 @@ class ResearchEngine:
                 log_callback(f"[WALK-FORWARD] Finished. Validated strategies: {len(self.last_walk_forward)}")
                 for rank, item in enumerate(self.last_ranked[:5], 1):
                     log_callback(f"[WF TOP {rank}] {item['candidate'].name} | Score={item['walk_forward_score']:.2f} | PositiveWindows={item['positive_windows']}/{item['window_count']} | OOS NetR={item['oos_net_r_sum']:.2f} | AvgPF={item['oos_pf_mean']:.2f}")
-            else:
-                log_callback and log_callback("[WALK-FORWARD] No eligible strategies/windows.")
-
+            if stop_event.is_set() and log_callback: log_callback("[WALK-FORWARD] Stopped by user.")
         if progress_callback: progress_callback(total, total)
         return self.last_ranked
