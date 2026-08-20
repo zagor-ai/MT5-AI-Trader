@@ -1,0 +1,292 @@
+name: Build XAU Strategy Researcher v2.1.1
+
+on:
+  push:
+    branches:
+      - feature/xau-researcher-v2.1.1-data-loader
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build complete v2.1.1
+        shell: python
+        run: |
+          import urllib.request
+          from pathlib import Path
+
+          raw = 'https://raw.githubusercontent.com/zagor-ai/MT5-AI-Trader/main/XAU_Strategy_Researcher_Pro_v2.1.py'
+          source = urllib.request.urlopen(raw).read().decode('utf-8')
+
+          start = source.index('    def load_rates(self, symbol, timeframe, start, end, logger):')
+          end = source.index('\n\n# ============================================================\n# INDICATORS', start)
+
+          new_method = r'''    def load_rates(self, symbol, timeframe, start, end, logger):
+        self.initialize()
+
+        logger("[MT5] Initializing terminal...")
+
+        terminal = mt5.terminal_info()
+        account = mt5.account_info()
+
+        if terminal:
+            logger(f"[MT5] Terminal: {getattr(terminal, 'name', 'Unknown')}")
+            logger(f"[MT5] Build: {getattr(terminal, 'build', 'Unknown')}")
+            logger(f"[MT5] Max bars: {getattr(terminal, 'maxbars', 'Unknown')}")
+
+        if account:
+            logger(f"[MT5] Account: {getattr(account, 'login', 'Unknown')}")
+            logger(f"[MT5] Server: {getattr(account, 'server', 'Unknown')}")
+
+        symbol_info = mt5.symbol_info(symbol)
+        if symbol_info is None:
+            raise RuntimeError(f"Symbol '{symbol}' is not available.\nMT5 error: {mt5_error_text()}")
+
+        if not mt5.symbol_select(symbol, True):
+            raise RuntimeError(f"Cannot select {symbol}.\nMT5 error: {mt5_error_text()}")
+
+        logger(f"[MT5] Symbol: {symbol} AVAILABLE ✓")
+
+        tick = mt5.symbol_info_tick(symbol)
+        if tick:
+            logger(f"[MT5] Tick: Bid={safe_float(tick.bid):.3f} Ask={safe_float(tick.ask):.3f}")
+
+        try:
+            start_dt = datetime.strptime(start, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            end_dt = (datetime.strptime(end, "%Y-%m-%d") + timedelta(days=1)).replace(tzinfo=timezone.utc)
+        except ValueError:
+            raise RuntimeError("Date format must be YYYY-MM-DD.")
+
+        if timeframe not in TIMEFRAMES:
+            raise RuntimeError(f"Unsupported timeframe: {timeframe}")
+
+        tf = getattr(mt5, TIMEFRAMES[timeframe])
+
+        logger(f"[DATA] Requested range: {start} -> {end}")
+        logger(f"[DATA] Timeframe: {timeframe}")
+
+        # MT5 can reject very large copy_rates_range requests with
+        # (-2, 'Terminal: Invalid params'). Load history in chunks and
+        # recursively reduce a failed chunk until MT5 accepts it.
+        chunk_days = {
+            "M1": 14,
+            "M5": 60,
+            "M15": 120,
+            "M30": 180,
+            "H1": 365,
+        }.get(timeframe, 60)
+
+        def request_chunk(a, b, label):
+            rates = mt5.copy_rates_range(symbol, tf, a, b)
+            if rates is not None and len(rates) > 0:
+                return rates
+
+            err = mt5_error_text()
+            logger(f"[DATA] Chunk {label} failed: {err}")
+
+            if (b - a).total_seconds() <= 2 * 86400:
+                return None
+
+            mid = a + (b - a) / 2
+            left = request_chunk(a, mid, label + "L")
+            right = request_chunk(mid, b, label + "R")
+
+            if left is None and right is None:
+                return None
+            if left is None:
+                return right
+            if right is None:
+                return left
+            return np.concatenate([left, right])
+
+        chunks = []
+        cursor = start_dt
+        chunk_no = 0
+        total_seconds = max((end_dt - start_dt).total_seconds(), 1)
+
+        while cursor < end_dt:
+            chunk_no += 1
+            chunk_end = min(cursor + timedelta(days=chunk_days), end_dt)
+            progress_pct = min(100.0, ((chunk_end - start_dt).total_seconds() / total_seconds) * 100.0)
+            logger(f"[DATA] Chunk {chunk_no}: {cursor.strftime('%Y-%m-%d')} -> {chunk_end.strftime('%Y-%m-%d')} ({progress_pct:.1f}%)")
+
+            rates = request_chunk(cursor, chunk_end, str(chunk_no))
+            if rates is not None and len(rates) > 0:
+                logger(f"[DATA] Chunk {chunk_no}: {len(rates):,} raw bars ✓")
+                chunks.append(rates)
+            else:
+                logger(f"[WARN] Chunk {chunk_no}: no data returned")
+
+            cursor = chunk_end
+
+        if not chunks:
+            raise RuntimeError(
+                "MT5 returned no historical bars for the requested range.\n"
+                f"Last error: {mt5_error_text()}\n\n"
+                "Possible causes:\n"
+                "- MT5 history is not downloaded for this period\n"
+                "- Broker has insufficient history\n"
+                "- The selected symbol/timeframe is unavailable for the requested dates"
+            )
+
+        logger("[DATA] Combining historical chunks...")
+        rates = np.concatenate(chunks)
+        logger(f"[DATA] Combined raw bars: {len(rates):,}")
+
+        df = pd.DataFrame(rates)
+        required = ["time", "open", "high", "low", "close"]
+        missing = [c for c in required if c not in df.columns]
+        if missing:
+            raise RuntimeError("MT5 data missing columns: " + ", ".join(missing))
+
+        df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
+        before_duplicates = len(df)
+        df = df.drop_duplicates(subset=["time"]).sort_values("time").set_index("time")
+        duplicates = before_duplicates - len(df)
+        if duplicates:
+            logger(f"[DATA] Duplicate bars removed: {duplicates:,}")
+
+        for col in ["open", "high", "low", "close"]:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        if "spread" in df.columns:
+            df["spread"] = pd.to_numeric(df["spread"], errors="coerce").fillna(0.0)
+            spread_available = True
+        else:
+            df["spread"] = 0.0
+            spread_available = False
+
+        df["spread_available"] = spread_available
+
+        before_validation = len(df)
+        df = df.dropna(subset=["open", "high", "low", "close"])
+        df = df[
+            (df["high"] >= df["low"])
+            & (df["high"] >= df["open"])
+            & (df["high"] >= df["close"])
+            & (df["low"] <= df["open"])
+            & (df["low"] <= df["close"])
+        ]
+        invalid = before_validation - len(df)
+        if invalid:
+            logger(f"[DATA] Invalid rows removed: {invalid:,}")
+
+        if len(df) < 1000:
+            raise RuntimeError(
+                f"Only {len(df):,} valid bars available.\n"
+                "At least 1000 bars are recommended for research."
+            )
+
+        logger(f"[DATA] Total valid bars: {len(df):,} ✓")
+        logger("[DATA] First bar: " + df.index[0].strftime("%Y-%m-%d %H:%M:%S UTC"))
+        logger("[DATA] Last bar: " + df.index[-1].strftime("%Y-%m-%d %H:%M:%S UTC"))
+        logger("[DATA] Historical spread: " + ("AVAILABLE ✓" if spread_available else "NOT AVAILABLE"))
+
+        # Report unusually large gaps without rejecting legitimate market closures.
+        expected = {
+            "M1": 300,
+            "M5": 1500,
+            "M15": 4500,
+            "M30": 9000,
+            "H1": 18000,
+        }[timeframe]
+        gaps = df.index.to_series().diff().dt.total_seconds()
+        large_gaps = int((gaps > expected * 4).sum())
+        if large_gaps:
+            logger(f"[WARN] Large historical gaps detected: {large_gaps}")
+        else:
+            logger("[DATA] Historical continuity check: OK ✓")
+
+        logger("[DATA] LOAD DATA completed ✓")
+        return df
+'''
+
+          out = source[:start] + new_method + source[end:]
+          out = out.replace('VERSION = "2.1"', 'VERSION = "2.1.1"', 1)
+          Path('XAU_Strategy_Researcher_Pro_v2.1.1.py').write_text(out, encoding='utf-8')
+
+          bat = r'''@echo off
+setlocal EnableExtensions
+cd /d "%~dp0"
+title XAU Strategy Researcher Pro v2.1.1
+
+echo ============================================================
+echo       XAU STRATEGY RESEARCHER PRO v2.1.1
+echo ============================================================
+echo.
+echo [INFO] Working directory: %CD%
+echo.
+
+set "PYTHON_EXE="
+
+where py >nul 2>nul
+if not errorlevel 1 (
+    py -3.12 --version >nul 2>nul
+    if not errorlevel 1 set "PYTHON_EXE=py -3.12"
+)
+
+if not defined PYTHON_EXE (
+    where python >nul 2>nul
+    if not errorlevel 1 (
+        python --version 2>nul | findstr /C:"Python 3.12" >nul
+        if not errorlevel 1 set "PYTHON_EXE=python"
+    )
+)
+
+if not defined PYTHON_EXE if exist "%LocalAppData%\Programs\Python\Python312\python.exe" set "PYTHON_EXE=%LocalAppData%\Programs\Python\Python312\python.exe"
+if not defined PYTHON_EXE if exist "%USERPROFILE%\anaconda3\python.exe" set "PYTHON_EXE=%USERPROFILE%\anaconda3\python.exe"
+
+if not defined PYTHON_EXE (
+    echo [ERROR] Python 3.12 was not found.
+    echo Run: py -0p
+    pause
+    exit /b 1
+)
+
+echo [OK] Python:
+%PYTHON_EXE% --version
+
+echo [INFO] Checking packages...
+%PYTHON_EXE% -c "import numpy,pandas,MetaTrader5; print('[OK] numpy'); print('[OK] pandas'); print('[OK] MetaTrader5')"
+if errorlevel 1 (
+    echo [WARN] Required packages missing. Installing...
+    %PYTHON_EXE% -m pip install numpy pandas MetaTrader5
+    if errorlevel 1 (
+        echo [ERROR] Package installation failed.
+        pause
+        exit /b 1
+    )
+)
+
+if not exist "%CD%\XAU_Strategy_Researcher_Pro_v2.1.1.py" (
+    echo [ERROR] XAU_Strategy_Researcher_Pro_v2.1.1.py not found.
+    pause
+    exit /b 1
+)
+
+echo.
+echo [INFO] Research-only mode. No real MT5 orders will be sent.
+echo [INFO] Starting application...
+echo.
+%PYTHON_EXE% "%CD%\XAU_Strategy_Researcher_Pro_v2.1.1.py"
+set "RC=%ERRORLEVEL%"
+echo.
+if "%RC%"=="0" (echo [INFO] Application closed normally.) else (echo [ERROR] Application exited with code %RC%.)
+pause
+exit /b %RC%
+'''
+          Path('Run_XAU_Strategy_Researcher_Pro_v2.1.1.bat').write_text(bat, encoding='utf-8')
+
+      - name: Commit generated files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add XAU_Strategy_Researcher_Pro_v2.1.1.py Run_XAU_Strategy_Researcher_Pro_v2.1.1.bat
+          git commit -m "Add complete XAU Strategy Researcher v2.1.1" || exit 0
+          git push
