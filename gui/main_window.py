@@ -90,16 +90,19 @@ class MainWindow(ttk.Frame):
 
         def worker():
             try:
+                import pandas as pd
                 rates = self.connector.load_rates(timeframe, bars)
                 if len(rates) == 0:
                     raise RuntimeError("MT5 returned zero bars.")
-                last_time = int(rates[-1]["time"])
-                last_dt = dt.datetime.fromtimestamp(last_time).strftime("%Y-%m-%d %H:%M:%S")
-                self.loaded_data = rates
+                frame = pd.DataFrame(rates)
+                frame["time"] = pd.to_datetime(frame["time"], unit="s")
+                frame = frame.set_index("time").sort_index()
+                last_dt = frame.index[-1].strftime("%Y-%m-%d %H:%M:%S")
+                self.loaded_data = frame
                 self.status.set("Historical Data", "Loaded ✓")
-                self.status.set("Number of Bars", str(len(rates)))
+                self.status.set("Number of Bars", str(len(frame)))
                 self.status.set("Last Bar Time", last_dt)
-                self.write(f"Historical data loaded ✓ — {len(rates)} bars", "DATA")
+                self.write(f"Historical data loaded ✓ — {len(frame)} bars", "DATA")
                 self.write(f"Last bar: {last_dt}", "DATA")
             except Exception as exc:
                 self.loaded_data = None
@@ -134,15 +137,22 @@ class MainWindow(ttk.Frame):
 
         def worker():
             try:
-                results = self.engine.run_research(self.loaded_data, stop_event=self.stop_event, progress_callback=progress, log_callback=log)
+                ranked = self.engine.run_research(self.loaded_data, stop_event=self.stop_event, progress_callback=progress, log_callback=log)
                 if self.stop_event.is_set():
                     self.write("Research stopped by user.", "RESEARCH")
                 else:
                     self.write("Research finished.", "RESEARCH")
-                    self.write(f"Completed candidates: {len(results)}", "RESULT")
-                    if results:
-                        best = max(results, key=lambda x: (float(x.get("profit_factor", 0)), float(x.get("net_r", 0))))
-                        self.write(f"Best strategy: {best.get('strategy_name', 'N/A')} | PF={best.get('profit_factor', 0):.2f} | NetR={best.get('net_r', 0):.2f}", "RESULT")
+                    self.write(f"Ranked strategies: {len(ranked)}", "RESULT")
+                    if ranked:
+                        best = ranked[0]
+                        self.write(
+                            f"Best strategy: {best.get('strategy_name', 'N/A')} | "
+                            f"Score={best.get('ranking_score', 0):.2f} | "
+                            f"PF={best.get('profit_factor', 0):.2f} | "
+                            f"NetR={best.get('net_r', 0):.2f} | "
+                            f"DD={best.get('max_drawdown_pct', 0):.2f}%",
+                            "RESULT",
+                        )
             except Exception as exc:
                 self.write(f"Research failed: {exc}", "ERROR")
             finally:
@@ -152,6 +162,9 @@ class MainWindow(ttk.Frame):
         self.research_thread.start()
 
     def stop_research(self):
+        if not self.research_thread or not self.research_thread.is_alive():
+            self.write("No research is currently running.", "RESEARCH")
+            return
         self.stop_event.set()
         self.write("STOP requested. Worker will stop at the next candidate checkpoint.", "RESEARCH")
 
