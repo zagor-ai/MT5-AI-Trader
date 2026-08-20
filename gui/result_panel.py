@@ -9,16 +9,13 @@ class ResultPanel(ttk.LabelFrame):
         self.value = "No research completed yet."
         body = ttk.Frame(self)
         body.pack(fill="x", padx=6, pady=3)
-        self.text = tk.Text(body, height=3, wrap="none", state="disabled")
+        self.text = tk.Label(body, text="No research completed yet.", anchor="w", justify="left")
         self.text.pack(side="left", fill="x", expand=True)
-        ttk.Button(body, text="COPY FINAL RESULT", command=self.copy_result).pack(side="right", padx=(8, 0), anchor="n")
+        ttk.Button(body, text="COPY FINAL RESULT", command=self.copy_result).pack(side="right", padx=(8, 0))
 
     def set_result(self, result: dict):
         self.value = self._format(result)
-        self.text.configure(state="normal")
-        self.text.delete("1.0", "end")
-        self.text.insert("1.0", self.value)
-        self.text.configure(state="disabled")
+        self.text.configure(text=self.value)
 
     def copy_result(self):
         self.clipboard_clear()
@@ -44,12 +41,11 @@ class ResultPanel(ttk.LabelFrame):
         validation = item.get("validation_score")
         pf = item.get("oos_pf_mean", item.get("profit_factor"))
         netr = item.get("oos_net_r_sum", item.get("net_r"))
-        windows = item.get("window_count")
-        positive = item.get("positive_windows")
+        wf_windows = item.get("window_count")
+        wf_positive = item.get("positive_windows")
         return (
-            f"Strategy: {name} | Direction: {direction} | WF: {cls._num(wf)} | MC: {cls._num(mc)} | "
-            f"Sensitivity: {cls._num(sens)} | Regime: {cls._num(regime)}\n"
-            f"Validation: {cls._num(validation)} | OOS PF: {cls._num(pf)} | OOS Net R: {cls._num(netr)} | "
-            f"WF Windows: {positive if positive is not None else '—'}/{windows if windows is not None else '—'}\n"
-            "Use COPY FINAL RESULT to send the complete result."
+            f"{name}  |  {direction}  |  WF {cls._num(wf)}  |  MC {cls._num(mc)}  |  "
+            f"Sensitivity {cls._num(sens)}  |  Regime {cls._num(regime)}  |  "
+            f"Validation {cls._num(validation)}  |  OOS PF {cls._num(pf)}  |  OOS Net R {cls._num(netr)}  |  "
+            f"WF {wf_positive if wf_positive is not None else '—'}/{wf_windows if wf_windows is not None else '—'}"
         )
