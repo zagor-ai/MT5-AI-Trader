@@ -1,10 +1,12 @@
 """Top-level orchestration for the modular research pipeline.
 
 The engine coordinates data, strategy generation, backtesting and ranking;
-individual modules remain independently testable.
+individual modules remain independently testable. It is read-only with respect
+to MetaTrader: no order functions exist here.
 """
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from threading import Event
+from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
@@ -54,7 +56,6 @@ class ResearchEngine:
         )
         trades = result.trades
         wins = sum(1 for t in trades if t.pnl > 0)
-        losses = sum(1 for t in trades if t.pnl < 0)
         gross_profit = sum(t.pnl for t in trades if t.pnl > 0)
         gross_loss = abs(sum(t.pnl for t in trades if t.pnl < 0))
         pf = gross_profit / gross_loss if gross_loss > 0 else 0.0
@@ -71,3 +72,37 @@ class ResearchEngine:
             "equity_curve": result.equity_curve,
             "trades": [t.to_dict() for t in trades],
         }
+
+    def run_research(
+        self,
+        data: pd.DataFrame,
+        candidate_runner: Callable[[Any, pd.DataFrame], Dict[str, Any]],
+        stop_event: Optional[Event] = None,
+        progress_callback: Optional[Callable[[int, int], None]] = None,
+        log_callback: Optional[Callable[[str], None]] = None,
+    ) -> List[Dict[str, Any]]:
+        stop_event = stop_event or Event()
+        candidates = self.generate_candidates()
+        total = len(candidates)
+        results: List[Dict[str, Any]] = []
+        if log_callback:
+            log_callback(f"Started. Candidates: {total}")
+        for index, candidate in enumerate(candidates, start=1):
+            if stop_event.is_set():
+                if log_callback:
+                    log_callback(f"STOP detected at candidate {index - 1}/{total}")
+                break
+            try:
+                result = dict(candidate_runner(candidate, data))
+                result["candidate_index"] = index
+                results.append(result)
+                if log_callback:
+                    log_callback(f"Candidate {index}/{total} completed")
+            except Exception as exc:
+                if log_callback:
+                    log_callback(f"Candidate {index}/{total} failed: {exc}")
+            if progress_callback:
+                progress_callback(index, total)
+        if log_callback:
+            log_callback(f"Finished. Results: {len(results)}")
+        return results
