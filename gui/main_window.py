@@ -7,6 +7,7 @@ from gui.controls import ControlsPanel
 from gui.log_panel import LogPanel
 from gui.progress import ProgressPanel
 from gui.status_panel import StatusPanel
+from gui.result_panel import ResultPanel
 from services.mt5_connector import MT5Connector
 from core.research_engine import ResearchEngine, ResearchConfig
 
@@ -14,7 +15,7 @@ class MainWindow(ttk.Frame):
     def __init__(self, master):
         super().__init__(master); self.master = master; self.connector = MT5Connector("XAUUSD"); self.engine = ResearchEngine(ResearchConfig(max_candidates=300)); self.stop_event = threading.Event(); self.loaded_data = None; self.research_thread = None; self._build(); self.after(100, self.initial_diagnostics)
     def _build(self):
-        self.status = StatusPanel(self); self.status.pack(fill="x", padx=8, pady=8); self.controls = ControlsPanel(self, callbacks={"connect": self.connect_mt5, "load_data": self.load_data, "start": self.start_research, "stop": self.stop_research}); self.controls.pack(fill="x", padx=8, pady=(0, 8)); self.progress = ProgressPanel(self); self.progress.pack(fill="x", padx=8, pady=(0, 8)); self.log = LogPanel(self); self.log.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        self.status = StatusPanel(self); self.status.pack(fill="x", padx=8, pady=8); self.controls = ControlsPanel(self, callbacks={"connect": self.connect_mt5, "load_data": self.load_data, "start": self.start_research, "stop": self.stop_research}); self.controls.pack(fill="x", padx=8, pady=(0, 8)); self.progress = ProgressPanel(self); self.progress.pack(fill="x", padx=8, pady=(0, 8)); self.result_panel = ResultPanel(self); self.result_panel.pack(fill="x", padx=8, pady=(0, 8)); self.log = LogPanel(self); self.log.pack(fill="both", expand=True, padx=8, pady=(0, 8))
     def write(self, message, level="INFO"): self.after(0, lambda: self.log.write(message, level))
     def initial_diagnostics(self):
         self.write("Application started."); self.write(f"Python version: {platform.python_version()}")
@@ -68,7 +69,7 @@ class MainWindow(ttk.Frame):
                         for kind, path in self.engine.last_exports.items(): self.write(f"[EXPORT] {kind.upper()}: {path}", "RESULT")
                     self.after(0, lambda: self.progress.set_phase("FINISHED"))
                     if ranked:
-                        best = ranked[0]; name = getattr(best.get("candidate"), "name", None) or best.get("strategy_name", "N/A"); score = best.get("walk_forward_score", best.get("validation_score", 0)); pf = best.get("oos_pf_mean", best.get("profit_factor", 0)); netr = best.get("oos_net_r_sum", best.get("net_r", 0)); self.write(f"Best strategy: {name} | Score={score:.2f} | AvgPF={pf:.2f} | OOS NetR={netr:.2f}", "RESULT")
+                        best = ranked[0]; self.after(0, lambda item=best: self.result_panel.set_result(item)); name = getattr(best.get("candidate"), "name", None) or best.get("strategy_name", "N/A"); score = best.get("walk_forward_score", best.get("validation_score", 0)); pf = best.get("oos_pf_mean", best.get("profit_factor", 0)); netr = best.get("oos_net_r_sum", best.get("net_r", 0)); self.write(f"Best strategy: {name} | Score={score:.2f} | AvgPF={pf:.2f} | OOS NetR={netr:.2f}", "RESULT")
                     self.after(0, lambda: self.progress.update_progress(100, 100, f"Final strategies: {len(ranked)}"))
             except Exception as exc: self.write(f"Research failed: {exc}", "ERROR"); self.after(0, lambda: self.progress.set_phase("ERROR"))
             finally: self.research_thread = None
