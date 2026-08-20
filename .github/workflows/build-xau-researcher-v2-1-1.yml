@@ -1,7 +1,16 @@
-name: Build XAU Strategy Researcher v2.1.1
+name: Validate XAU Strategy Researcher v2.1.1
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - "*.py"
+      - "core/**"
+      - "gui/**"
+      - "services/**"
+      - "validation/**"
+      - "requirements.txt"
+      - ".github/workflows/build-xau-researcher-v2-1-1.yml"
 
 jobs:
   validate:
@@ -10,74 +19,55 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Validate source exists
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+
+      - name: Validate project structure
         shell: bash
         run: |
           set -e
+          test -f app.py
           test -f XAU_Strategy_Researcher_Pro_v2.1.py
-          lines=$(wc -l < XAU_Strategy_Researcher_Pro_v2.1.py)
-          echo "Source lines: $lines"
-          if [ "$lines" -lt 1000 ]; then
-            echo "ERROR: source file is unexpectedly short"
-            exit 1
-          fi
+          test -f core/research_engine.py
+          test -f services/mt5_connector.py
+          test -f gui/main_window.py
+          test -f validation/monte_carlo.py
+          test -f validation/parameter_sensitivity.py
+          test -f validation/market_regime.py
+          test -f requirements.txt
 
-      - name: Validate Python syntax
+      - name: Compile all Python modules
         shell: bash
         run: |
           set -e
-          python -m py_compile XAU_Strategy_Researcher_Pro_v2.1.py
+          python -m compileall -q app.py XAU_Strategy_Researcher_Pro_v2.1.py core gui services validation
 
-      - name: Build v2.1.1 copy
+      - name: Import smoke test
         shell: bash
         run: |
           set -e
-          cp XAU_Strategy_Researcher_Pro_v2.1.py XAU_Strategy_Researcher_Pro_v2.1.1.py
-          sed -i 's/v2\.1/v2.1.1/g' XAU_Strategy_Researcher_Pro_v2.1.1.py
-          lines=$(wc -l < XAU_Strategy_Researcher_Pro_v2.1.1.py)
-          echo "Generated lines: $lines"
-          if [ "$lines" -lt 1000 ]; then
-            echo "ERROR: generated file is unexpectedly short"
-            exit 1
-          fi
-          python -m py_compile XAU_Strategy_Researcher_Pro_v2.1.1.py
+          python - <<'PY'
+          import app
+          from core.research_engine import ResearchEngine, ResearchConfig
+          from services.mt5_connector import MT5Connector
+          from validation.monte_carlo import MonteCarloSimulator, MonteCarloConfig
+          from validation.parameter_sensitivity import ParameterSensitivity, SensitivityConfig
+          from validation.market_regime import detect_regimes
+          print("Import smoke test: OK")
+          print("Candidates:", ResearchConfig().max_candidates)
+          print("MT5 connector: OK")
+          print("Validation engines: OK")
+          PY
 
-      - name: Create Python 3.12 BAT launcher
+      - name: Check launcher
         shell: bash
         run: |
-          cat > Run_XAU_Strategy_Researcher_Pro_v2.1.1.bat <<'EOF'
-          @echo off
-          setlocal
-          cd /d "%~dp0"
-          title XAU Strategy Researcher Pro v2.1.1
-          echo ============================================================
-          echo       XAU STRATEGY RESEARCHER PRO v2.1.1
-          echo ============================================================
-          echo.
-          echo [INFO] Checking Python 3.12...
-          py -3.12 --version
-          if errorlevel 1 (
-              echo [ERROR] Python 3.12 was not found.
-              pause
-              exit /b 1
-          )
-          echo.
-          echo [INFO] Checking required packages...
-          py -3.12 -c "import numpy,pandas,MetaTrader5; print('Packages: OK')"
-          if errorlevel 1 (
-              echo [INFO] Installing required packages...
-              py -3.12 -m pip install numpy pandas MetaTrader5
-              if errorlevel 1 (
-                  echo [ERROR] Package installation failed.
-                  pause
-                  exit /b 1
-              )
-          )
-          echo.
-          echo [INFO] Starting Researcher...
-          py -3.12 "%~dp0XAU_Strategy_Researcher_Pro_v2.1.1.py"
-          echo.
-          echo [INFO] Researcher exited with code %ERRORLEVEL%.
-          pause
-          EOF
-          echo BAT created.
+          set -e
+          test -f Run_XAU_Strategy_Researcher_Pro_v2.1.bat
+          grep -q "py -3.12" Run_XAU_Strategy_Researcher_Pro_v2.1.bat
+          echo "Launcher check: OK"
