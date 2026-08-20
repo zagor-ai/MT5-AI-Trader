@@ -1,51 +1,110 @@
 @echo off
-setlocal
+setlocal EnableExtensions EnableDelayedExpansion
+
 title XAU Strategy Researcher Pro v2.1
+
 cd /d "%~dp0"
 
 echo ============================================================
-echo       XAU Strategy Researcher Pro v2.1
+echo       XAU STRATEGY RESEARCHER PRO v2.1
 echo ============================================================
 echo.
+echo [INFO] Working directory:
+echo %CD%
+echo.
 
-where python >nul 2>&1
-if errorlevel 1 (
-    echo ERROR: Python was not found in PATH.
-    echo Activate your Anaconda environment or install Python.
-    pause
-    exit /b 1
+set "PYTHON_CMD="
+
+where py >nul 2>nul
+if %ERRORLEVEL%==0 (
+    py -3.10 --version >nul 2>nul
+    if %ERRORLEVEL%==0 (
+        set "PYTHON_CMD=py -3.10"
+    )
 )
 
-if not exist "XAU_Strategy_Researcher_Pro_v2.1.py" (
-    echo ERROR: XAU_Strategy_Researcher_Pro_v2.1.py not found.
-    echo Put this BAT file in the same folder as the Python file.
-    pause
-    exit /b 1
+if not defined PYTHON_CMD (
+    where python >nul 2>nul
+    if %ERRORLEVEL%==0 (
+        set "PYTHON_CMD=python"
+    )
 )
 
-echo Checking required packages...
-python -c "import MetaTrader5, pandas, numpy" >nul 2>&1
-if errorlevel 1 (
-    echo Required packages are missing.
-    echo Installing MetaTrader5 pandas numpy...
+if not defined PYTHON_CMD (
+    echo [ERROR] Python was not found.
     echo.
-    python -m pip install MetaTrader5 pandas numpy
+    echo Please install Python 3.10+ and make sure it is in PATH.
+    echo.
+    pause
+    exit /b 1
+)
+
+echo [INFO] Python command:
+echo %PYTHON_CMD%
+echo.
+
+echo [INFO] Checking Python...
+%PYTHON_CMD% --version
+
+echo.
+echo [INFO] Checking required packages...
+
+%PYTHON_CMD% -c "import MetaTrader5; print('MetaTrader5: OK')" 2>nul
+if errorlevel 1 (
+    echo.
+    echo [ERROR] MetaTrader5 package is missing.
+    echo.
+    echo Installing required packages...
+    %PYTHON_CMD% -m pip install MetaTrader5 pandas numpy
+
     if errorlevel 1 (
         echo.
-        echo ERROR: Package installation failed.
+        echo [ERROR] Package installation failed.
+        echo.
         pause
         exit /b 1
     )
 )
 
-echo.
-echo Starting XAU Strategy Researcher Pro v2.1...
-echo.
-python "XAU_Strategy_Researcher_Pro_v2.1.py"
+%PYTHON_CMD% -c "import pandas; print('pandas: OK')" 2>nul
+if errorlevel 1 (
+    echo [INFO] Installing pandas...
+    %PYTHON_CMD% -m pip install pandas
+)
+
+%PYTHON_CMD% -c "import numpy; print('numpy: OK')" 2>nul
+if errorlevel 1 (
+    echo [INFO] Installing numpy...
+    %PYTHON_CMD% -m pip install numpy
+)
 
 echo.
 echo ============================================================
-echo Program closed.
+echo [START] Launching XAU Strategy Researcher Pro v2.1
 echo ============================================================
+echo.
+
+if not exist "XAU_Strategy_Researcher_Pro_v2.1.py" (
+    echo [ERROR] Python application file not found:
+    echo XAU_Strategy_Researcher_Pro_v2.1.py
+    echo.
+    pause
+    exit /b 1
+)
+
+%PYTHON_CMD% "XAU_Strategy_Researcher_Pro_v2.1.py"
+
+set "EXIT_CODE=%ERRORLEVEL%"
+
+echo.
+echo ============================================================
+if "%EXIT_CODE%"=="0" (
+    echo [INFO] Application closed normally.
+) else (
+    echo [ERROR] Application exited with code %EXIT_CODE%.
+)
+echo ============================================================
+echo.
+
 pause
-endlocal
+exit /b %EXIT_CODE%
