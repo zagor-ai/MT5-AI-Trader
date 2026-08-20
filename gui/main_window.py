@@ -1,14 +1,16 @@
 """Main GUI composition for XAU Strategy Researcher Pro."""
 import platform
 import threading
+import datetime as dt
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk
 
 from gui.controls import ControlsPanel
 from gui.log_panel import LogPanel
 from gui.progress import ProgressPanel
 from gui.status_panel import StatusPanel
 from services.mt5_connector import MT5Connector
+from core.research_engine import ResearchEngine, ResearchConfig
 
 
 class MainWindow(ttk.Frame):
@@ -16,7 +18,10 @@ class MainWindow(ttk.Frame):
         super().__init__(master)
         self.master = master
         self.connector = MT5Connector("XAUUSD")
+        self.engine = ResearchEngine(ResearchConfig(max_candidates=300))
         self.stop_event = threading.Event()
+        self.loaded_data = None
+        self.research_thread = None
         self._build()
         self.after(100, self.initial_diagnostics)
 
@@ -84,6 +89,7 @@ class MainWindow(ttk.Frame):
             self.write("Bars must be a valid integer.", "ERROR")
             return
         self.status.set("Timeframe", timeframe)
+        self.status.set("Historical Data", "Loading...")
         self.write("=======================================", "DATA")
         self.write(f"LOAD DATA started: XAUUSD {timeframe}, bars={bars}", "DATA")
 
@@ -94,14 +100,15 @@ class MainWindow(ttk.Frame):
                 if count == 0:
                     raise RuntimeError("MT5 returned zero bars.")
                 last_time = int(rates[-1]["time"])
-                import datetime as dt
                 last_dt = dt.datetime.fromtimestamp(last_time).strftime("%Y-%m-%d %H:%M:%S")
+                self.loaded_data = rates
                 self.status.set("Historical Data", "Loaded ✓")
                 self.status.set("Number of Bars", str(count))
                 self.status.set("Last Bar Time", last_dt)
                 self.write(f"Historical data loaded ✓ — {count} bars", "DATA")
                 self.write(f"Last bar: {last_dt}", "DATA")
             except Exception as exc:
+                self.loaded_data = None
                 self.status.set("Historical Data", "FAILED ✗")
                 self.write(f"LOAD FAILED ✗: {exc}", "ERROR")
                 try:
@@ -112,14 +119,55 @@ class MainWindow(ttk.Frame):
         threading.Thread(target=worker, daemon=True).start()
 
     def start_research(self):
-        if self.stop_event.is_set():
-            self.stop_event.clear()
-        self.write("Research engine start requested.", "RESEARCH")
-        self.write("Research execution hook is ready; engine integration comes next.", "RESEARCH")
+        if self.loaded_data is None:
+            self.write("Research blocked: load historical data first.", "ERROR")
+            return
+        if self.research_thread and self.research_thread.is_alive():
+            self.write("Research is already running.", "RESEARCH")
+            return
+        self.stop_event.clear()
+        self.progress.update_progress(0, self.engine.config.max_candidates)
+        self.write("=======================================", "RESEARCH")
+        self.write("Started", "RESEARCH")
+        self.write(f"Candidates: {self.engine.config.max_candidates}", "RESEARCH")
+
+        def progress(current, total):
+            self.after(0, lambda: self.progress.update_progress(current, total))
+
+        def log(message):
+            self.write(message, "TEST")
+
+        def runner(candidate, data):
+            # Candidate-to-signal translation is intentionally isolated here.
+            # The current engine's generator/backtester API will be wired to the
+            # selected strategy rules in the next research-integration step.
+            return {"candidate": str(candidate), "status": "GENERATED"}
+
+        def worker():
+            try:
+                results = self.engine.run_research(
+                    self.loaded_data,
+                    runner,
+                    stop_event=self.stop_event,
+                    progress_callback=progress,
+                    log_callback=log,
+                )
+                if self.stop_event.is_set():
+                    self.write("Research stopped by user.", "RESEARCH")
+                else:
+                    self.write("Research finished.", "RESEARCH")
+                    self.write(f"Results generated: {len(results)}", "RESULT")
+            except Exception as exc:
+                self.write(f"Research failed: {exc}", "ERROR")
+            finally:
+                self.research_thread = None
+
+        self.research_thread = threading.Thread(target=worker, daemon=True)
+        self.research_thread.start()
 
     def stop_research(self):
         self.stop_event.set()
-        self.write("STOP requested. Current research worker will stop at its next checkpoint.", "RESEARCH")
+        self.write("STOP requested. Worker will stop at the next candidate checkpoint.", "RESEARCH")
 
 
 def run_app():
