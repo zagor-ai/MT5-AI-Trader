@@ -6,7 +6,7 @@ After a successful XAU Strategy Research run, the application publishes a compac
 
 - `CHATGPT_RESEARCH_REPORT.md` — human-readable audit summary.
 - `research_report.json` — structured report for programmatic review.
-- `run_manifest.json` — run identity, Git revision and large-file policy.
+- `run_manifest.json` — run identity, exact Git revision and large-file policy.
 - `ranked_strategies.csv` — ranked strategy table.
 - `best_strategy_rules.json` — winning strategy specification.
 - `best_strategy_trades.csv` — trade evidence for the winner.
