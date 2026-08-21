@@ -1,0 +1,868 @@
+{
+  "schema_version": "1.0",
+  "generated_utc": "2026-08-21T19:48:19.721286+00:00",
+  "source": {
+    "path": "results\\ranked_strategies.json",
+    "bytes": 351422064,
+    "sha256": "3eebd2e5c3abe1eee8290f62bb3166991231dbc5a9ac5344557d2d845d4ea0ba",
+    "modified_utc": "2026-08-20T20:03:07.658710+00:00"
+  },
+  "git_commit_sha": "0b06ef33556cbb40b35bb878ec83893b9197ebba",
+  "raw_file_policy": "local_only; never committed or uploaded",
+  "record_count": 10,
+  "summary": {
+    "best_strategy": {
+      "rank": 1,
+      "name": "SELL_EMA_RSI_ATR_0166",
+      "direction": "SELL",
+      "candidate": {
+        "name": "SELL_EMA_RSI_ATR_0166",
+        "direction": "SELL",
+        "indicators": {
+          "ema_fast": 20,
+          "ema_slow": 100,
+          "rsi_period": 12,
+          "rsi_buy": 55,
+          "rsi_sell": 50,
+          "atr_period": 14
+        },
+        "entry_rules": [
+          {
+            "type": "EMA_TREND",
+            "fast": 20,
+            "slow": 100,
+            "relation": "<"
+          },
+          {
+            "type": "RSI_RANGE",
+            "period": 12,
+            "min": 30,
+            "max": 50
+          }
+        ],
+        "exit_rules": [
+          {
+            "type": "ATR_SL",
+            "multiplier": 1.0
+          },
+          {
+            "type": "RR_TP",
+            "rr": 2.2
+          }
+        ],
+        "risk": {
+          "atr_sl": 1.0,
+          "rr": 2.2
+        }
+      },
+      "validation_score": 0.0,
+      "walk_forward_score": 13.682414609808031,
+      "monte_carlo_robustness": 98.175,
+      "sensitivity_robustness": 100.0,
+      "regime_robustness": 73.08338419788836,
+      "oos_to_train_ratio": 0.0,
+      "dd_ratio": 0.0,
+      "oos": {
+        "trade_count": null,
+        "win_rate": null,
+        "profit_factor": null,
+        "net_r": null,
+        "expectancy": null,
+        "max_drawdown_r": null
+      },
+      "walk_forward": {
+        "window_count": 6,
+        "positive_windows": 4,
+        "positive_window_ratio": 0.6666666666666666,
+        "oos_net_r_sum": 114.83285939324415,
+        "oos_net_r_mean": 19.138809898874026,
+        "oos_pf_mean": 1.0946467287925543
+      },
+      "monte_carlo": {
+        "simulations": 2000.0,
+        "probability_positive": 0.974,
+        "probability_ruin": 0.0105,
+        "p05_net_r": 15.79164296966614,
+        "p95_net_r": 206.55561423780094,
+        "p95_max_drawdown_r": 66.51550343942203
+      }
+    },
+    "oos_profit_factor": {
+      "min": 0.0,
+      "median": 0.0,
+      "max": 0.0
+    },
+    "oos_net_r": {
+      "min": 0.0,
+      "median": 0.0,
+      "max": 0.0
+    },
+    "walk_forward_positive_ratio": {
+      "min": 0.6666666666666666,
+      "mean": 0.6833333333333333,
+      "max": 0.8333333333333334
+    }
+  },
+  "strategies": [
+    {
+      "rank": 1,
+      "name": "SELL_EMA_RSI_ATR_0166",
+      "direction": "SELL",
+      "candidate": {
+        "name": "SELL_EMA_RSI_ATR_0166",
+        "direction": "SELL",
+        "indicators": {
+          "ema_fast": 20,
+          "ema_slow": 100,
+          "rsi_period": 12,
+          "rsi_buy": 55,
+          "rsi_sell": 50,
+          "atr_period": 14
+        },
+        "entry_rules": [
+          {
+            "type": "EMA_TREND",
+            "fast": 20,
+            "slow": 100,
+            "relation": "<"
+          },
+          {
+            "type": "RSI_RANGE",
+            "period": 12,
+            "min": 30,
+            "max": 50
+          }
+        ],
+        "exit_rules": [
+          {
+            "type": "ATR_SL",
+            "multiplier": 1.0
+          },
+          {
+            "type": "RR_TP",
+            "rr": 2.2
+          }
+        ],
+        "risk": {
+          "atr_sl": 1.0,
+          "rr": 2.2
+        }
+      },
+      "validation_score": 0.0,
+      "walk_forward_score": 13.682414609808031,
+      "monte_carlo_robustness": 98.175,
+      "sensitivity_robustness": 100.0,
+      "regime_robustness": 73.08338419788836,
+      "oos_to_train_ratio": 0.0,
+      "dd_ratio": 0.0,
+      "oos": {
+        "trade_count": null,
+        "win_rate": null,
+        "profit_factor": null,
+        "net_r": null,
+        "expectancy": null,
+        "max_drawdown_r": null
+      },
+      "walk_forward": {
+        "window_count": 6,
+        "positive_windows": 4,
+        "positive_window_ratio": 0.6666666666666666,
+        "oos_net_r_sum": 114.83285939324415,
+        "oos_net_r_mean": 19.138809898874026,
+        "oos_pf_mean": 1.0946467287925543
+      },
+      "monte_carlo": {
+        "simulations": 2000.0,
+        "probability_positive": 0.974,
+        "probability_ruin": 0.0105,
+        "p05_net_r": 15.79164296966614,
+        "p95_net_r": 206.55561423780094,
+        "p95_max_drawdown_r": 66.51550343942203
+      }
+    },
+    {
+      "rank": 2,
+      "name": "SELL_EMA_RSI_ATR_0175",
+      "direction": "SELL",
+      "candidate": {
+        "name": "SELL_EMA_RSI_ATR_0175",
+        "direction": "SELL",
+        "indicators": {
+          "ema_fast": 20,
+          "ema_slow": 100,
+          "rsi_period": 14,
+          "rsi_buy": 50,
+          "rsi_sell": 50,
+          "atr_period": 14
+        },
+        "entry_rules": [
+          {
+            "type": "EMA_TREND",
+            "fast": 20,
+            "slow": 100,
+            "relation": "<"
+          },
+          {
+            "type": "RSI_RANGE",
+            "period": 14,
+            "min": 30,
+            "max": 50
+          }
+        ],
+        "exit_rules": [
+          {
+            "type": "ATR_SL",
+            "multiplier": 1.0
+          },
+          {
+            "type": "RR_TP",
+            "rr": 2.2
+          }
+        ],
+        "risk": {
+          "atr_sl": 1.0,
+          "rr": 2.2
+        }
+      },
+      "validation_score": 0.0,
+      "walk_forward_score": 14.526457202486139,
+      "monte_carlo_robustness": 98.825,
+      "sensitivity_robustness": 100.0,
+      "regime_robustness": 72.98928420524996,
+      "oos_to_train_ratio": 0.0,
+      "dd_ratio": 0.0,
+      "oos": {
+        "trade_count": null,
+        "win_rate": null,
+        "profit_factor": null,
+        "net_r": null,
+        "expectancy": null,
+        "max_drawdown_r": null
+      },
+      "walk_forward": {
+        "window_count": 6,
+        "positive_windows": 4,
+        "positive_window_ratio": 0.6666666666666666,
+        "oos_net_r_sum": 125.83285939324608,
+        "oos_net_r_mean": 20.97214323220768,
+        "oos_pf_mean": 1.102263765863739
+      },
+      "monte_carlo": {
+        "simulations": 2000.0,
+        "probability_positive": 0.9865,
+        "probability_ruin": 0.01,
+        "p05_net_r": 32.450270387391484,
+        "p95_net_r": 222.92180314122393,
+        "p95_max_drawdown_r": 65.91550343942185
+      }
+    },
+    {
+      "rank": 3,
+      "name": "SELL_EMA_RSI_ATR_0156",
+      "direction": "SELL",
+      "candidate": {
+        "name": "SELL_EMA_RSI_ATR_0156",
+        "direction": "SELL",
+        "indicators": {
+          "ema_fast": 20,
+          "ema_slow": 100,
+          "rsi_period": 12,
+          "rsi_buy": 50,
+          "rsi_sell": 50,
+          "atr_period": 14
+        },
+        "entry_rules": [
+          {
+            "type": "EMA_TREND",
+            "fast": 20,
+            "slow": 100,
+            "relation": "<"
+          },
+          {
+            "type": "RSI_RANGE",
+            "period": 12,
+            "min": 30,
+            "max": 50
+          }
+        ],
+        "exit_rules": [
+          {
+            "type": "ATR_SL",
+            "multiplier": 1.0
+          },
+          {
+            "type": "RR_TP",
+            "rr": 2.0
+          }
+        ],
+        "risk": {
+          "atr_sl": 1.0,
+          "rr": 2.0
+        }
+      },
+      "validation_score": 0.0,
+      "walk_forward_score": 12.373969477977058,
+      "monte_carlo_robustness": 96.85,
+      "sensitivity_robustness": 100.0,
+      "regime_robustness": 72.88179115071999,
+      "oos_to_train_ratio": 0.0,
+      "dd_ratio": 0.0,
+      "oos": {
+        "trade_count": null,
+        "win_rate": null,
+        "profit_factor": null,
+        "net_r": null,
+        "expectancy": null,
+        "max_drawdown_r": null
+      },
+      "walk_forward": {
+        "window_count": 6,
+        "positive_windows": 4,
+        "positive_window_ratio": 0.6666666666666666,
+        "oos_net_r_sum": 98.08894374797748,
+        "oos_net_r_mean": 16.34815729132958,
+        "oos_pf_mean": 1.073586145418165
+      },
+      "monte_carlo": {
+        "simulations": 2000.0,
+        "probability_positive": 0.96,
+        "probability_ruin": 0.023,
+        "p05_net_r": 5.08894374797499,
+        "p95_net_r": 192.9999999999981,
+        "p95_max_drawdown_r": 72.91105625201928
+      }
+    },
+    {
+      "rank": 4,
+      "name": "SELL_EMA_RSI_ATR_0222",
+      "direction": "SELL",
+      "candidate": {
+        "name": "SELL_EMA_RSI_ATR_0222",
+        "direction": "SELL",
+        "indicators": {
+          "ema_fast": 20,
+          "ema_slow": 200,
+          "rsi_period": 14,
+          "rsi_buy": 55,
+          "rsi_sell": 50,
+          "atr_period": 14
+        },
+        "entry_rules": [
+          {
+            "type": "EMA_TREND",
+            "fast": 20,
+            "slow": 200,
+            "relation": "<"
+          },
+          {
+            "type": "RSI_RANGE",
+            "period": 14,
+            "min": 30,
+            "max": 50
+          }
+        ],
+        "exit_rules": [
+          {
+            "type": "ATR_SL",
+            "multiplier": 1.0
+          },
+          {
+            "type": "RR_TP",
+            "rr": 2.2
+          }
+        ],
+        "risk": {
+          "atr_sl": 1.0,
+          "rr": 2.2
+        }
+      },
+      "validation_score": 0.0,
+      "walk_forward_score": 13.688189921428238,
+      "monte_carlo_robustness": 98.42500000000001,
+      "sensitivity_robustness": 100.0,
+      "regime_robustness": 72.7288683623169,
+      "oos_to_train_ratio": 0.0,
+      "dd_ratio": 0.0,
+      "oos": {
+        "trade_count": null,
+        "win_rate": null,
+        "profit_factor": null,
+        "net_r": null,
+        "expectancy": null,
+        "max_drawdown_r": null
+      },
+      "walk_forward": {
+        "window_count": 6,
+        "positive_windows": 4,
+        "positive_window_ratio": 0.6666666666666666,
+        "oos_net_r_sum": 114.83285939324408,
+        "oos_net_r_mean": 19.138809898874012,
+        "oos_pf_mean": 1.0969568534406393
+      },
+      "monte_carlo": {
+        "simulations": 2000.0,
+        "probability_positive": 0.9795,
+        "probability_ruin": 0.011,
+        "p05_net_r": 19.716929407742178,
+        "p95_net_r": 208.99518202457958,
+        "p95_max_drawdown_r": 65.22000000000087
+      }
+    },
+    {
+      "rank": 5,
+      "name": "SELL_EMA_RSI_ATR_0250",
+      "direction": "SELL",
+      "candidate": {
+        "name": "SELL_EMA_RSI_ATR_0250",
+        "direction": "SELL",
+        "indicators": {
+          "ema_fast": 50,
+          "ema_slow": 100,
+          "rsi_period": 14,
+          "rsi_buy": 50,
+          "rsi_sell": 50,
+          "atr_period": 14
+        },
+        "entry_rules": [
+          {
+            "type": "EMA_TREND",
+            "fast": 50,
+            "slow": 100,
+            "relation": "<"
+          },
+          {
+            "type": "RSI_RANGE",
+            "period": 14,
+            "min": 30,
+            "max": 50
+          }
+        ],
+        "exit_rules": [
+          {
+            "type": "ATR_SL",
+            "multiplier": 1.0
+          },
+          {
+            "type": "RR_TP",
+            "rr": 2.2
+          }
+        ],
+        "risk": {
+          "atr_sl": 1.0,
+          "rr": 2.2
+        }
+      },
+      "validation_score": 0.0,
+      "walk_forward_score": 15.943036870884498,
+      "monte_carlo_robustness": 99.45,
+      "sensitivity_robustness": 100.0,
+      "regime_robustness": 72.66009551577008,
+      "oos_to_train_ratio": 0.0,
+      "dd_ratio": 0.0,
+      "oos": {
+        "trade_count": null,
+        "win_rate": null,
+        "profit_factor": null,
+        "net_r": null,
+        "expectancy": null,
+        "max_drawdown_r": null
+      },
+      "walk_forward": {
+        "window_count": 6,
+        "positive_windows": 5,
+        "positive_window_ratio": 0.8333333333333334,
+        "oos_net_r_sum": 139.63285939324462,
+        "oos_net_r_mean": 23.272143232207437,
+        "oos_pf_mean": 1.121562299889794
+      },
+      "monte_carlo": {
+        "simulations": 2000.0,
+        "probability_positive": 0.9925,
+        "probability_ruin": 0.0035,
+        "p05_net_r": 44.72180314122239,
+        "p95_net_r": 230.53169234284277,
+        "p95_max_drawdown_r": 59.91550343942092
+      }
+    },
+    {
+      "rank": 6,
+      "name": "SELL_EMA_RSI_ATR_0231",
+      "direction": "SELL",
+      "candidate": {
+        "name": "SELL_EMA_RSI_ATR_0231",
+        "direction": "SELL",
+        "indicators": {
+          "ema_fast": 50,
+          "ema_slow": 100,
+          "rsi_period": 12,
+          "rsi_buy": 50,
+          "rsi_sell": 50,
+          "atr_period": 14
+        },
+        "entry_rules": [
+          {
+            "type": "EMA_TREND",
+            "fast": 50,
+            "slow": 100,
+            "relation": "<"
+          },
+          {
+            "type": "RSI_RANGE",
+            "period": 12,
+            "min": 30,
+            "max": 50
+          }
+        ],
+        "exit_rules": [
+          {
+            "type": "ATR_SL",
+            "multiplier": 1.0
+          },
+          {
+            "type": "RR_TP",
+            "rr": 2.0
+          }
+        ],
+        "risk": {
+          "atr_sl": 1.0,
+          "rr": 2.0
+        }
+      },
+      "validation_score": 0.0,
+      "walk_forward_score": 11.84249683640417,
+      "monte_carlo_robustness": 96.925,
+      "sensitivity_robustness": 100.0,
+      "regime_robustness": 72.64822779490629,
+      "oos_to_train_ratio": 0.0,
+      "dd_ratio": 0.0,
+      "oos": {
+        "trade_count": null,
+        "win_rate": null,
+        "profit_factor": null,
+        "net_r": null,
+        "expectancy": null,
+        "max_drawdown_r": null
+      },
+      "walk_forward": {
+        "window_count": 6,
+        "positive_windows": 4,
+        "positive_window_ratio": 0.6666666666666666,
+        "oos_net_r_sum": 91.08894374797805,
+        "oos_net_r_mean": 15.181490624663008,
+        "oos_pf_mean": 1.0709970887889926
+      },
+      "monte_carlo": {
+        "simulations": 2000.0,
+        "probability_positive": 0.9545,
+        "probability_ruin": 0.016,
+        "p05_net_r": 4.088943747978191,
+        "p95_net_r": 183.3079368691374,
+        "p95_max_drawdown_r": 68.91550343942215
+      }
+    },
+    {
+      "rank": 7,
+      "name": "SELL_EMA_RSI_ATR_0165",
+      "direction": "SELL",
+      "candidate": {
+        "name": "SELL_EMA_RSI_ATR_0165",
+        "direction": "SELL",
+        "indicators": {
+          "ema_fast": 20,
+          "ema_slow": 100,
+          "rsi_period": 12,
+          "rsi_buy": 55,
+          "rsi_sell": 50,
+          "atr_period": 14
+        },
+        "entry_rules": [
+          {
+            "type": "EMA_TREND",
+            "fast": 20,
+            "slow": 100,
+            "relation": "<"
+          },
+          {
+            "type": "RSI_RANGE",
+            "period": 12,
+            "min": 30,
+            "max": 50
+          }
+        ],
+        "exit_rules": [
+          {
+            "type": "ATR_SL",
+            "multiplier": 1.0
+          },
+          {
+            "type": "RR_TP",
+            "rr": 1.5
+          }
+        ],
+        "risk": {
+          "atr_sl": 1.0,
+          "rr": 1.5
+        }
+      },
+      "validation_score": 0.0,
+      "walk_forward_score": 13.277457971552964,
+      "monte_carlo_robustness": 98.45,
+      "sensitivity_robustness": 97.14285714285714,
+      "regime_robustness": 72.50677502838339,
+      "oos_to_train_ratio": 0.0,
+      "dd_ratio": 0.0,
+      "oos": {
+        "trade_count": null,
+        "win_rate": null,
+        "profit_factor": null,
+        "net_r": null,
+        "expectancy": null,
+        "max_drawdown_r": null
+      },
+      "walk_forward": {
+        "window_count": 6,
+        "positive_windows": 4,
+        "positive_window_ratio": 0.6666666666666666,
+        "oos_net_r_sum": 110.0328593932436,
+        "oos_net_r_mean": 18.338809898873933,
+        "oos_pf_mean": 1.076664073490544
+      },
+      "monte_carlo": {
+        "simulations": 2000.0,
+        "probability_positive": 0.9765,
+        "probability_ruin": 0.0075,
+        "p05_net_r": 23.927810020061802,
+        "p95_net_r": 201.47171986300563,
+        "p95_max_drawdown_r": 63.520552812600215
+      }
+    },
+    {
+      "rank": 8,
+      "name": "SELL_EMA_RSI_ATR_0174",
+      "direction": "SELL",
+      "candidate": {
+        "name": "SELL_EMA_RSI_ATR_0174",
+        "direction": "SELL",
+        "indicators": {
+          "ema_fast": 20,
+          "ema_slow": 100,
+          "rsi_period": 14,
+          "rsi_buy": 50,
+          "rsi_sell": 50,
+          "atr_period": 14
+        },
+        "entry_rules": [
+          {
+            "type": "EMA_TREND",
+            "fast": 20,
+            "slow": 100,
+            "relation": "<"
+          },
+          {
+            "type": "RSI_RANGE",
+            "period": 14,
+            "min": 30,
+            "max": 50
+          }
+        ],
+        "exit_rules": [
+          {
+            "type": "ATR_SL",
+            "multiplier": 1.0
+          },
+          {
+            "type": "RR_TP",
+            "rr": 1.5
+          }
+        ],
+        "risk": {
+          "atr_sl": 1.0,
+          "rr": 1.5
+        }
+      },
+      "validation_score": 0.0,
+      "walk_forward_score": 14.149097559021456,
+      "monte_carlo_robustness": 99.025,
+      "sensitivity_robustness": 100.0,
+      "regime_robustness": 72.32605932967606,
+      "oos_to_train_ratio": 0.0,
+      "dd_ratio": 0.0,
+      "oos": {
+        "trade_count": null,
+        "win_rate": null,
+        "profit_factor": null,
+        "net_r": null,
+        "expectancy": null,
+        "max_drawdown_r": null
+      },
+      "walk_forward": {
+        "window_count": 6,
+        "positive_windows": 4,
+        "positive_window_ratio": 0.6666666666666666,
+        "oos_net_r_sum": 121.5328593932458,
+        "oos_net_r_mean": 20.255476565540967,
+        "oos_pf_mean": 1.0803199084778745
+      },
+      "monte_carlo": {
+        "simulations": 2000.0,
+        "probability_positive": 0.986,
+        "probability_ruin": 0.0055,
+        "p05_net_r": 28.47677503851532,
+        "p95_net_r": 212.97055861493183,
+        "p95_max_drawdown_r": 61.51610562520212
+      }
+    },
+    {
+      "rank": 9,
+      "name": "SELL_EMA_RSI_ATR_0249",
+      "direction": "SELL",
+      "candidate": {
+        "name": "SELL_EMA_RSI_ATR_0249",
+        "direction": "SELL",
+        "indicators": {
+          "ema_fast": 50,
+          "ema_slow": 100,
+          "rsi_period": 14,
+          "rsi_buy": 50,
+          "rsi_sell": 50,
+          "atr_period": 14
+        },
+        "entry_rules": [
+          {
+            "type": "EMA_TREND",
+            "fast": 50,
+            "slow": 100,
+            "relation": "<"
+          },
+          {
+            "type": "RSI_RANGE",
+            "period": 14,
+            "min": 30,
+            "max": 50
+          }
+        ],
+        "exit_rules": [
+          {
+            "type": "ATR_SL",
+            "multiplier": 1.0
+          },
+          {
+            "type": "RR_TP",
+            "rr": 1.5
+          }
+        ],
+        "risk": {
+          "atr_sl": 1.0,
+          "rr": 1.5
+        }
+      },
+      "validation_score": 0.0,
+      "walk_forward_score": 12.394765871241601,
+      "monte_carlo_robustness": 98.05,
+      "sensitivity_robustness": 97.14285714285714,
+      "regime_robustness": 72.23001805266239,
+      "oos_to_train_ratio": 0.0,
+      "dd_ratio": 0.0,
+      "oos": {
+        "trade_count": null,
+        "win_rate": null,
+        "profit_factor": null,
+        "net_r": null,
+        "expectancy": null,
+        "max_drawdown_r": null
+      },
+      "walk_forward": {
+        "window_count": 6,
+        "positive_windows": 4,
+        "positive_window_ratio": 0.6666666666666666,
+        "oos_net_r_sum": 98.53285939324513,
+        "oos_net_r_mean": 16.42214323220752,
+        "oos_pf_mean": 1.0685872333659532
+      },
+      "monte_carlo": {
+        "simulations": 2000.0,
+        "probability_positive": 0.9705,
+        "probability_ruin": 0.0095,
+        "p05_net_r": 12.998838751924108,
+        "p95_net_r": 185.78852242167594,
+        "p95_max_drawdown_r": 62.000000000000455
+      }
+    },
+    {
+      "rank": 10,
+      "name": "SELL_EMA_RSI_ATR_0221",
+      "direction": "SELL",
+      "candidate": {
+        "name": "SELL_EMA_RSI_ATR_0221",
+        "direction": "SELL",
+        "indicators": {
+          "ema_fast": 20,
+          "ema_slow": 200,
+          "rsi_period": 14,
+          "rsi_buy": 55,
+          "rsi_sell": 50,
+          "atr_period": 14
+        },
+        "entry_rules": [
+          {
+            "type": "EMA_TREND",
+            "fast": 20,
+            "slow": 200,
+            "relation": "<"
+          },
+          {
+            "type": "RSI_RANGE",
+            "period": 14,
+            "min": 30,
+            "max": 50
+          }
+        ],
+        "exit_rules": [
+          {
+            "type": "ATR_SL",
+            "multiplier": 1.0
+          },
+          {
+            "type": "RR_TP",
+            "rr": 1.5
+          }
+        ],
+        "risk": {
+          "atr_sl": 1.0,
+          "rr": 1.5
+        }
+      },
+      "validation_score": 0.0,
+      "walk_forward_score": 12.812716213677845,
+      "monte_carlo_robustness": 98.4,
+      "sensitivity_robustness": 97.14285714285714,
+      "regime_robustness": 72.19667210823863,
+      "oos_to_train_ratio": 0.0,
+      "dd_ratio": 0.0,
+      "oos": {
+        "trade_count": null,
+        "win_rate": null,
+        "profit_factor": null,
+        "net_r": null,
+        "expectancy": null,
+        "max_drawdown_r": null
+      },
+      "walk_forward": {
+        "window_count": 6,
+        "positive_windows": 4,
+        "positive_window_ratio": 0.6666666666666666,
+        "oos_net_r_sum": 104.03285939324442,
+        "oos_net_r_mean": 17.33880989887407,
+        "oos_pf_mean": 1.0707673703404716
+      },
+      "monte_carlo": {
+        "simulations": 2000.0,
+        "probability_positive": 0.9745,
+        "probability_ruin": 0.0065,
+        "p05_net_r": 14.539075816826951,
+        "p95_net_r": 187.103888125109,
+        "p95_max_drawdown_r": 60.999999999999666
+      }
+    }
+  ]
+}
