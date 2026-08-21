@@ -7,15 +7,40 @@ class ResultPanel(ttk.LabelFrame):
     def __init__(self, master, **kwargs):
         super().__init__(master, text="FINAL RESEARCH RESULT", **kwargs)
         self.value = "No research completed yet."
-        body = ttk.Frame(self)
-        body.pack(fill="x", padx=6, pady=3)
-        self.text = tk.Label(body, text="No research completed yet.", anchor="w", justify="left")
-        self.text.pack(side="left", fill="x", expand=True)
-        ttk.Button(body, text="COPY FINAL RESULT", command=self.copy_result).pack(side="right", padx=(8, 0))
+        self.vars = {}
+        fields = ["Strategy", "Direction", "Score", "OOS PF", "OOS Net R", "WF", "Monte Carlo", "Sensitivity", "Regime", "Validation"]
+        for i, name in enumerate(fields):
+            row, col = divmod(i, 5)
+            cell = ttk.Frame(self)
+            cell.grid(row=row, column=col, sticky="ew", padx=5, pady=2)
+            ttk.Label(cell, text=f"{name}:").pack(side="left")
+            var = tk.StringVar(value="—")
+            self.vars[name] = var
+            ttk.Label(cell, textvariable=var).pack(side="left", padx=(3, 0))
+        for col in range(5):
+            self.columnconfigure(col, weight=1)
+        ttk.Button(self, text="COPY FINAL RESULT", command=self.copy_result).grid(row=0, column=5, rowspan=2, padx=7, pady=3, sticky="nsew")
+        self.columnconfigure(5, weight=0)
 
     def set_result(self, result: dict):
-        self.value = self._format(result)
-        self.text.configure(text=self.value)
+        candidate = result.get("candidate")
+        name = getattr(candidate, "name", None) or result.get("strategy_name", "N/A")
+        direction = getattr(candidate, "direction", None) or "—"
+        values = {
+            "Strategy": name,
+            "Direction": direction,
+            "Score": self._num(result.get("walk_forward_score", result.get("validation_score"))),
+            "OOS PF": self._num(result.get("oos_pf_mean", result.get("profit_factor"))),
+            "OOS Net R": self._num(result.get("oos_net_r_sum", result.get("net_r"))),
+            "WF": f"{result.get('positive_windows', '—')}/{result.get('window_count', '—')}",
+            "Monte Carlo": self._num(result.get("monte_carlo_robustness")),
+            "Sensitivity": self._num(result.get("sensitivity_robustness")),
+            "Regime": self._num(result.get("regime_robustness")),
+            "Validation": self._num(result.get("validation_score")),
+        }
+        for key, value in values.items():
+            self.vars[key].set(str(value))
+        self.value = self._format(values)
 
     def copy_result(self):
         self.clipboard_clear()
@@ -29,23 +54,12 @@ class ResultPanel(ttk.LabelFrame):
         except (TypeError, ValueError):
             return "—"
 
-    @classmethod
-    def _format(cls, item):
-        candidate = item.get("candidate")
-        name = getattr(candidate, "name", None) or item.get("strategy_name", "N/A")
-        direction = getattr(candidate, "direction", None) or "—"
-        wf = item.get("walk_forward_score")
-        mc = item.get("monte_carlo_robustness")
-        sens = item.get("sensitivity_robustness")
-        regime = item.get("regime_robustness")
-        validation = item.get("validation_score")
-        pf = item.get("oos_pf_mean", item.get("profit_factor"))
-        netr = item.get("oos_net_r_sum", item.get("net_r"))
-        wf_windows = item.get("window_count")
-        wf_positive = item.get("positive_windows")
+    @staticmethod
+    def _format(values):
         return (
-            f"{name}  |  {direction}  |  WF {cls._num(wf)}  |  MC {cls._num(mc)}  |  "
-            f"Sensitivity {cls._num(sens)}  |  Regime {cls._num(regime)}  |  "
-            f"Validation {cls._num(validation)}  |  OOS PF {cls._num(pf)}  |  OOS Net R {cls._num(netr)}  |  "
-            f"WF {wf_positive if wf_positive is not None else '—'}/{wf_windows if wf_windows is not None else '—'}"
+            "XAU FINAL RESULT\n"
+            f"Strategy={values['Strategy']} | Direction={values['Direction']} | Score={values['Score']} | "
+            f"OOS PF={values['OOS PF']} | OOS Net R={values['OOS Net R']} | WF={values['WF']}\n"
+            f"Monte Carlo={values['Monte Carlo']} | Sensitivity={values['Sensitivity']} | "
+            f"Regime={values['Regime']} | Validation={values['Validation']}"
         )
