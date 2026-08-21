@@ -7,3 +7,4 @@ results/ranked_strategies.json
 results/full/
 results/raw/
 results/**/*.tmp
+results/.large_result_publish_state.json
