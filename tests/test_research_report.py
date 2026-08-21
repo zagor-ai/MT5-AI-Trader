@@ -39,6 +39,8 @@ class ResearchReportSmokeTest(unittest.TestCase):
             report = json.loads(Path(paths["report"]).read_text(encoding="utf-8"))
             self.assertEqual(report["run"]["research_id"], "TEST-001")
             self.assertEqual(report["ranking"]["top_strategies"][0]["candidate"]["name"], "SELL_EMA_RSI_ATR_0166")
+            self.assertIn("runtime", report)
+            self.assertIn("python_version", report["runtime"])
             self.assertTrue(Path(paths["markdown"]).exists())
             self.assertTrue(Path(paths["manifest"]).exists())
             self.assertNotIn("trades", report["ranking"]["top_strategies"][0])
