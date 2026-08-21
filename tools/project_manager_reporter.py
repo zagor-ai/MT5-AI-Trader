@@ -45,10 +45,18 @@ def build_decision_package(digest: dict[str, Any]) -> dict[str, Any]:
     mc = best.get("monte_carlo") or {}
 
     flags: list[str] = []
-    if quality.get("status") == "WARNING":
-        flags.extend(quality.get("warnings") or [])
-    if best.get("validation_score") is None:
+    validation = best.get("validation_score")
+    warnings = list(quality.get("warnings") or []) if quality.get("status") == "WARNING" else []
+    # The digest may carry a generic "validation unavailable" warning even when
+    # a specific ranked row does contain a validation score. Do not let stale or
+    # aggregate metadata override the evidence present in the selected row.
+    for warning in warnings:
+        if validation is not None and "validation score is unavailable" in warning.lower():
+            continue
+        flags.append(warning)
+    if validation is None:
         flags.append("Validation score is unavailable in the final ranked export.")
+
     pf = _num(oos.get("profit_factor"))
     wf_positive = _num(wf.get("positive_window_ratio"))
     mc_positive = _num(mc.get("probability_positive"))
