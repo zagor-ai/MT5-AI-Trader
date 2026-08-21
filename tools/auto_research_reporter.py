@@ -1,8 +1,8 @@
 """Fully automatic local research-result watcher and GitHub publisher.
 
 The watcher keeps the bulky research JSON local. Whenever the main ranked result
-changes, it invokes the existing compact publisher, which publishes only the
-machine-readable digest and ChatGPT audit to the current Git branch.
+changes, it invokes the compact publisher and then the project-manager package
+publisher. Only small audit/decision files are pushed to the current Git branch.
 
 Usage:
     py -3.12 tools/auto_research_reporter.py --once
@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 ROOT = Path(__file__).resolve().parents[1]
 INPUT = ROOT / "results" / "ranked_strategies.json"
 PUBLISHER = ROOT / "tools" / "large_result_publisher.py"
+MANAGER_PUBLISHER = ROOT / "tools" / "project_manager_reporter.py"
 LOG_FILE = ROOT / "results" / "auto_research_publisher.log"
 LOCK_FILE = ROOT / "results" / ".auto_research_reporter.lock"
 
@@ -68,20 +69,11 @@ def _release_lock() -> None:
         pass
 
 
-def publish_once() -> int:
-    if not INPUT.exists():
-        _log(f"waiting: {INPUT} does not exist")
-        return 0
-    if not PUBLISHER.exists():
-        _log(f"ERROR: publisher missing: {PUBLISHER}")
-        return 2
-
-    _log(f"research result detected: {INPUT.name} size={INPUT.stat().st_size} bytes")
-    command = [sys.executable, str(PUBLISHER), "--once", "--input", str(INPUT)]
+def _run_publisher(command: list[str], label: str, timeout: int = 1800) -> int:
     try:
-        completed = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, timeout=1800)
+        completed = subprocess.run(command, cwd=ROOT, text=True, capture_output=True, timeout=timeout)
     except subprocess.TimeoutExpired:
-        _log("ERROR: publisher timed out after 30 minutes")
+        _log(f"ERROR: {label} timed out after {timeout // 60} minutes")
         return 3
     if completed.stdout:
         for line in completed.stdout.splitlines():
@@ -89,11 +81,35 @@ def publish_once() -> int:
     if completed.stderr:
         for line in completed.stderr.splitlines():
             _log("STDERR: " + line)
-    if completed.returncode == 0:
-        _log("publish cycle completed successfully")
-    else:
-        _log(f"ERROR: publisher exit code={completed.returncode}")
+    if completed.returncode != 0:
+        _log(f"ERROR: {label} exit code={completed.returncode}")
     return completed.returncode
+
+
+def publish_once() -> int:
+    if not INPUT.exists():
+        _log(f"waiting: {INPUT} does not exist")
+        return 0
+    if not PUBLISHER.exists():
+        _log(f"ERROR: publisher missing: {PUBLISHER}")
+        return 2
+    if not MANAGER_PUBLISHER.exists():
+        _log(f"ERROR: project manager publisher missing: {MANAGER_PUBLISHER}")
+        return 2
+
+    _log(f"research result detected: {INPUT.name} size={INPUT.stat().st_size} bytes")
+    publisher_command = [sys.executable, str(PUBLISHER), "--once", "--input", str(INPUT)]
+    rc = _run_publisher(publisher_command, "large-result publisher")
+    if rc != 0:
+        return rc
+
+    manager_command = [sys.executable, str(MANAGER_PUBLISHER), "--once"]
+    rc = _run_publisher(manager_command, "project-manager publisher")
+    if rc != 0:
+        return rc
+
+    _log("publish cycle completed successfully")
+    return 0
 
 
 def main() -> int:
@@ -108,7 +124,7 @@ def main() -> int:
         return 0
     try:
         last = None
-        # Publish the current result at startup; the underlying publisher is idempotent.
+        # Publish the current result at startup; both downstream publishers are idempotent.
         publish_once()
         last = _fingerprint()
         if args.once:
