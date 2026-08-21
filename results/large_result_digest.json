@@ -1,15 +1,23 @@
 {
-  "schema_version": "1.0",
-  "generated_utc": "2026-08-21T19:48:19.721286+00:00",
+  "schema_version": "1.1",
+  "generated_utc": "2026-08-21T19:56:18.987555+00:00",
   "source": {
     "path": "results\\ranked_strategies.json",
     "bytes": 351422064,
     "sha256": "3eebd2e5c3abe1eee8290f62bb3166991231dbc5a9ac5344557d2d845d4ea0ba",
     "modified_utc": "2026-08-20T20:03:07.658710+00:00"
   },
-  "git_commit_sha": "0b06ef33556cbb40b35bb878ec83893b9197ebba",
+  "git_commit_sha": "f7455ccfa43482ac3d708510367f12a1ee957a4f",
   "raw_file_policy": "local_only; never committed or uploaded",
   "record_count": 10,
+  "quality": {
+    "status": "WARNING",
+    "warnings": [
+      "Base TRAIN/TEST OOS metrics unavailable for 10/10 ranked strategies; Walk-Forward OOS aggregates were used instead.",
+      "Validation score is unavailable for 10/10 ranked strategies in the final export."
+    ],
+    "oos_metric_policy": "prefer final test metrics; otherwise use Walk-Forward OOS aggregates; never convert missing values to zero"
+  },
   "summary": {
     "best_strategy": {
       "rank": 1,
@@ -55,18 +63,23 @@
           "rr": 2.2
         }
       },
-      "validation_score": 0.0,
+      "validation_score": null,
       "walk_forward_score": 13.682414609808031,
       "monte_carlo_robustness": 98.175,
       "sensitivity_robustness": 100.0,
       "regime_robustness": 73.08338419788836,
-      "oos_to_train_ratio": 0.0,
-      "dd_ratio": 0.0,
+      "oos_to_train_ratio": null,
+      "dd_ratio": null,
+      "evidence": {
+        "oos_source": "walk_forward",
+        "test_metrics_available": false
+      },
       "oos": {
         "trade_count": null,
         "win_rate": null,
-        "profit_factor": null,
-        "net_r": null,
+        "profit_factor": 1.0946467287925543,
+        "net_r": 114.83285939324415,
+        "net_r_mean": 19.138809898874026,
         "expectancy": null,
         "max_drawdown_r": null
       },
@@ -88,14 +101,14 @@
       }
     },
     "oos_profit_factor": {
-      "min": 0.0,
-      "median": 0.0,
-      "max": 0.0
+      "min": 1.0685872333659532,
+      "median": 1.0784919909842092,
+      "max": 1.121562299889794
     },
     "oos_net_r": {
-      "min": 0.0,
-      "median": 0.0,
-      "max": 0.0
+      "min": 91.08894374797805,
+      "median": 112.43285939324383,
+      "max": 139.63285939324462
     },
     "walk_forward_positive_ratio": {
       "min": 0.6666666666666666,
@@ -148,18 +161,23 @@
           "rr": 2.2
         }
       },
-      "validation_score": 0.0,
+      "validation_score": null,
       "walk_forward_score": 13.682414609808031,
       "monte_carlo_robustness": 98.175,
       "sensitivity_robustness": 100.0,
       "regime_robustness": 73.08338419788836,
-      "oos_to_train_ratio": 0.0,
-      "dd_ratio": 0.0,
+      "oos_to_train_ratio": null,
+      "dd_ratio": null,
+      "evidence": {
+        "oos_source": "walk_forward",
+        "test_metrics_available": false
+      },
       "oos": {
         "trade_count": null,
         "win_rate": null,
-        "profit_factor": null,
-        "net_r": null,
+        "profit_factor": 1.0946467287925543,
+        "net_r": 114.83285939324415,
+        "net_r_mean": 19.138809898874026,
         "expectancy": null,
         "max_drawdown_r": null
       },
@@ -224,18 +242,23 @@
           "rr": 2.2
         }
       },
-      "validation_score": 0.0,
+      "validation_score": null,
       "walk_forward_score": 14.526457202486139,
       "monte_carlo_robustness": 98.825,
       "sensitivity_robustness": 100.0,
       "regime_robustness": 72.98928420524996,
-      "oos_to_train_ratio": 0.0,
-      "dd_ratio": 0.0,
+      "oos_to_train_ratio": null,
+      "dd_ratio": null,
+      "evidence": {
+        "oos_source": "walk_forward",
+        "test_metrics_available": false
+      },
       "oos": {
         "trade_count": null,
         "win_rate": null,
-        "profit_factor": null,
-        "net_r": null,
+        "profit_factor": 1.102263765863739,
+        "net_r": 125.83285939324608,
+        "net_r_mean": 20.97214323220768,
         "expectancy": null,
         "max_drawdown_r": null
       },
@@ -300,18 +323,23 @@
           "rr": 2.0
         }
       },
-      "validation_score": 0.0,
+      "validation_score": null,
       "walk_forward_score": 12.373969477977058,
       "monte_carlo_robustness": 96.85,
       "sensitivity_robustness": 100.0,
       "regime_robustness": 72.88179115071999,
-      "oos_to_train_ratio": 0.0,
-      "dd_ratio": 0.0,
+      "oos_to_train_ratio": null,
+      "dd_ratio": null,
+      "evidence": {
+        "oos_source": "walk_forward",
+        "test_metrics_available": false
+      },
       "oos": {
         "trade_count": null,
         "win_rate": null,
-        "profit_factor": null,
-        "net_r": null,
+        "profit_factor": 1.073586145418165,
+        "net_r": 98.08894374797748,
+        "net_r_mean": 16.34815729132958,
         "expectancy": null,
         "max_drawdown_r": null
       },
@@ -376,18 +404,23 @@
           "rr": 2.2
         }
       },
-      "validation_score": 0.0,
+      "validation_score": null,
       "walk_forward_score": 13.688189921428238,
       "monte_carlo_robustness": 98.42500000000001,
       "sensitivity_robustness": 100.0,
       "regime_robustness": 72.7288683623169,
-      "oos_to_train_ratio": 0.0,
-      "dd_ratio": 0.0,
+      "oos_to_train_ratio": null,
+      "dd_ratio": null,
+      "evidence": {
+        "oos_source": "walk_forward",
+        "test_metrics_available": false
+      },
       "oos": {
         "trade_count": null,
         "win_rate": null,
-        "profit_factor": null,
-        "net_r": null,
+        "profit_factor": 1.0969568534406393,
+        "net_r": 114.83285939324408,
+        "net_r_mean": 19.138809898874012,
         "expectancy": null,
         "max_drawdown_r": null
       },
@@ -452,18 +485,23 @@
           "rr": 2.2
         }
       },
-      "validation_score": 0.0,
+      "validation_score": null,
       "walk_forward_score": 15.943036870884498,
       "monte_carlo_robustness": 99.45,
       "sensitivity_robustness": 100.0,
       "regime_robustness": 72.66009551577008,
-      "oos_to_train_ratio": 0.0,
-      "dd_ratio": 0.0,
+      "oos_to_train_ratio": null,
+      "dd_ratio": null,
+      "evidence": {
+        "oos_source": "walk_forward",
+        "test_metrics_available": false
+      },
       "oos": {
         "trade_count": null,
         "win_rate": null,
-        "profit_factor": null,
-        "net_r": null,
+        "profit_factor": 1.121562299889794,
+        "net_r": 139.63285939324462,
+        "net_r_mean": 23.272143232207437,
         "expectancy": null,
         "max_drawdown_r": null
       },
@@ -528,18 +566,23 @@
           "rr": 2.0
         }
       },
-      "validation_score": 0.0,
+      "validation_score": null,
       "walk_forward_score": 11.84249683640417,
       "monte_carlo_robustness": 96.925,
       "sensitivity_robustness": 100.0,
       "regime_robustness": 72.64822779490629,
-      "oos_to_train_ratio": 0.0,
-      "dd_ratio": 0.0,
+      "oos_to_train_ratio": null,
+      "dd_ratio": null,
+      "evidence": {
+        "oos_source": "walk_forward",
+        "test_metrics_available": false
+      },
       "oos": {
         "trade_count": null,
         "win_rate": null,
-        "profit_factor": null,
-        "net_r": null,
+        "profit_factor": 1.0709970887889926,
+        "net_r": 91.08894374797805,
+        "net_r_mean": 15.181490624663008,
         "expectancy": null,
         "max_drawdown_r": null
       },
@@ -604,18 +647,23 @@
           "rr": 1.5
         }
       },
-      "validation_score": 0.0,
+      "validation_score": null,
       "walk_forward_score": 13.277457971552964,
       "monte_carlo_robustness": 98.45,
       "sensitivity_robustness": 97.14285714285714,
       "regime_robustness": 72.50677502838339,
-      "oos_to_train_ratio": 0.0,
-      "dd_ratio": 0.0,
+      "oos_to_train_ratio": null,
+      "dd_ratio": null,
+      "evidence": {
+        "oos_source": "walk_forward",
+        "test_metrics_available": false
+      },
       "oos": {
         "trade_count": null,
         "win_rate": null,
-        "profit_factor": null,
-        "net_r": null,
+        "profit_factor": 1.076664073490544,
+        "net_r": 110.0328593932436,
+        "net_r_mean": 18.338809898873933,
         "expectancy": null,
         "max_drawdown_r": null
       },
@@ -680,18 +728,23 @@
           "rr": 1.5
         }
       },
-      "validation_score": 0.0,
+      "validation_score": null,
       "walk_forward_score": 14.149097559021456,
       "monte_carlo_robustness": 99.025,
       "sensitivity_robustness": 100.0,
       "regime_robustness": 72.32605932967606,
-      "oos_to_train_ratio": 0.0,
-      "dd_ratio": 0.0,
+      "oos_to_train_ratio": null,
+      "dd_ratio": null,
+      "evidence": {
+        "oos_source": "walk_forward",
+        "test_metrics_available": false
+      },
       "oos": {
         "trade_count": null,
         "win_rate": null,
-        "profit_factor": null,
-        "net_r": null,
+        "profit_factor": 1.0803199084778745,
+        "net_r": 121.5328593932458,
+        "net_r_mean": 20.255476565540967,
         "expectancy": null,
         "max_drawdown_r": null
       },
@@ -756,18 +809,23 @@
           "rr": 1.5
         }
       },
-      "validation_score": 0.0,
+      "validation_score": null,
       "walk_forward_score": 12.394765871241601,
       "monte_carlo_robustness": 98.05,
       "sensitivity_robustness": 97.14285714285714,
       "regime_robustness": 72.23001805266239,
-      "oos_to_train_ratio": 0.0,
-      "dd_ratio": 0.0,
+      "oos_to_train_ratio": null,
+      "dd_ratio": null,
+      "evidence": {
+        "oos_source": "walk_forward",
+        "test_metrics_available": false
+      },
       "oos": {
         "trade_count": null,
         "win_rate": null,
-        "profit_factor": null,
-        "net_r": null,
+        "profit_factor": 1.0685872333659532,
+        "net_r": 98.53285939324513,
+        "net_r_mean": 16.42214323220752,
         "expectancy": null,
         "max_drawdown_r": null
       },
@@ -832,18 +890,23 @@
           "rr": 1.5
         }
       },
-      "validation_score": 0.0,
+      "validation_score": null,
       "walk_forward_score": 12.812716213677845,
       "monte_carlo_robustness": 98.4,
       "sensitivity_robustness": 97.14285714285714,
       "regime_robustness": 72.19667210823863,
-      "oos_to_train_ratio": 0.0,
-      "dd_ratio": 0.0,
+      "oos_to_train_ratio": null,
+      "dd_ratio": null,
+      "evidence": {
+        "oos_source": "walk_forward",
+        "test_metrics_available": false
+      },
       "oos": {
         "trade_count": null,
         "win_rate": null,
-        "profit_factor": null,
-        "net_r": null,
+        "profit_factor": 1.0707673703404716,
+        "net_r": 104.03285939324442,
+        "net_r_mean": 17.33880989887407,
         "expectancy": null,
         "max_drawdown_r": null
       },
