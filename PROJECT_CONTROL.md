@@ -24,11 +24,11 @@ Large raw result files, caches, virtual environments, Python bytecode and tempor
 Every published research run should contain:
 - `research_id`
 - UTC/local start and finish timestamps
-- git commit SHA
+- git commit SHA (captured at runtime with `git rev-parse HEAD`)
 - application version
 - Python version
 - package versions
-- MT5 terminal/build/server information
+- MT5 terminal/build/server information when available
 - symbol and timeframe
 - data bar count and first/last bar timestamps
 - full research configuration
@@ -44,7 +44,7 @@ A published run should include a compact report containing:
 - market-regime summary
 - final ranking and score components
 - best strategy rules
-- warnings and data-quality checks
+- runtime metadata and warnings
 
 ## Manager workflow
 Before changing strategy logic:
@@ -71,4 +71,4 @@ After a successful ResearchEngine run, `results/` contains:
 The raw `results/ranked_strategies.json` remains local and gitignored. The compact reports deliberately omit raw equity curves and full trade arrays so GitHub remains below its file-size limits.
 
 ## Completed implementation
-The ResearchEngine now generates the three compact audit files automatically when research results are exported. The report records candidate/rejection counts, data shape, full ResearchConfig, walk-forward summaries, robustness components, final ranking and the winning strategy specification.
+The ResearchEngine now generates the three compact audit files automatically when research results are exported. The report records candidate/rejection counts, data shape, full ResearchConfig, runtime/package/MT5 metadata when available, walk-forward summaries, robustness components, final ranking and the winning strategy specification. It also captures the exact Git commit present when the report is generated.
