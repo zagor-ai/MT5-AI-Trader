@@ -33,6 +33,57 @@ class LargeResultPublisherSmokeTest(unittest.TestCase):
         self.assertNotIn("equity_curve", digest["strategies"][0])
         self.assertIn("TEST", markdown)
         self.assertEqual(len(digest["source"]["sha256"]), 64)
+        self.assertEqual(digest["strategies"][0]["oos"]["profit_factor"], 1.4)
+        self.assertEqual(digest["strategies"][0]["evidence"]["oos_source"], "test")
+
+    def test_walk_forward_oos_is_used_when_final_test_metrics_are_missing(self):
+        payload = [
+            {
+                "candidate": {"name": "WF_ONLY", "direction": "SELL"},
+                "walk_forward_score": 13.68,
+                "monte_carlo_robustness": 98.2,
+                "sensitivity_robustness": 100.0,
+                "regime_robustness": 73.1,
+                "walk_forward": {
+                    "window_count": 6,
+                    "positive_windows": 4,
+                    "positive_window_ratio": 4 / 6,
+                    "oos_net_r_sum": 114.83,
+                    "oos_net_r_mean": 19.138,
+                    "oos_pf_mean": 1.0946,
+                },
+            }
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ranked_strategies.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            digest, markdown = build_digest(path)
+
+        strategy = digest["strategies"][0]
+        self.assertEqual(strategy["evidence"]["oos_source"], "walk_forward")
+        self.assertAlmostEqual(strategy["oos"]["profit_factor"], 1.0946, places=4)
+        self.assertAlmostEqual(strategy["oos"]["net_r"], 114.83, places=2)
+        self.assertAlmostEqual(strategy["oos"]["net_r_mean"], 19.138, places=3)
+        self.assertEqual(digest["summary"]["oos_profit_factor"]["min"], 1.0946)
+        self.assertEqual(digest["summary"]["oos_net_r"]["max"], 114.83)
+        self.assertEqual(digest["quality"]["status"], "WARNING")
+        self.assertIn("Walk-Forward OOS aggregates were used instead", markdown)
+        self.assertNotIn("OOS PF: min `0.0`", markdown)
+        self.assertNotIn("OOS Net R: min `0.0`", markdown)
+
+    def test_missing_metrics_are_not_silently_converted_to_zero(self):
+        payload = [{"candidate": {"name": "MISSING", "direction": "BUY"}}]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "ranked_strategies.json"
+            path.write_text(json.dumps(payload), encoding="utf-8")
+            digest, markdown = build_digest(path)
+
+        strategy = digest["strategies"][0]
+        self.assertIsNone(strategy["oos"]["profit_factor"])
+        self.assertIsNone(strategy["oos"]["net_r"])
+        self.assertEqual(digest["summary"]["oos_profit_factor"]["min"], None)
+        self.assertEqual(digest["quality"]["status"], "WARNING")
+        self.assertIn("No OOS metrics were found", markdown)
 
 
 if __name__ == "__main__":
