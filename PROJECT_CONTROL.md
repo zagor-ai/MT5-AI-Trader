@@ -24,7 +24,7 @@ Large raw result files, caches, virtual environments, Python bytecode and tempor
 Every published research run should contain:
 - `research_id`
 - UTC/local start and finish timestamps
-- git commit SHA (captured at runtime with `git rev-parse HEAD`)
+- git commit SHA, captured at runtime with `git rev-parse HEAD`
 - application version
 - Python version
 - package versions
@@ -63,8 +63,8 @@ GitHub gives the reviewer access to committed project state. It does not provide
 After a successful ResearchEngine run, `results/` contains:
 - `CHATGPT_RESEARCH_REPORT.md` — human-readable audit summary.
 - `research_report.json` — structured compact report for programmatic analysis.
-- `run_manifest.json` — identity and large-file policy.
-- `ranked_strategies.csv` — ranked table.
+- `run_manifest.json` — identity, exact Git revision and large-file policy.
+- `ranked_strategies.csv` — ranked strategy table.
 - `best_strategy_rules.json` — winning strategy specification.
 - `best_strategy_trades.csv` — trade evidence for the winner.
 
