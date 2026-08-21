@@ -63,7 +63,7 @@ GitHub gives the reviewer access to committed project state. It does not provide
 After a successful ResearchEngine run, `results/` contains:
 - `CHATGPT_RESEARCH_REPORT.md` — human-readable audit summary.
 - `research_report.json` — structured compact report for programmatic analysis.
-- `run_manifest.json` — identity, exact Git revision and large-file policy.
+- `run_manifest.json` — run identity, exact Git revision and large-file policy.
 - `ranked_strategies.csv` — ranked strategy table.
 - `best_strategy_rules.json` — winning strategy specification.
 - `best_strategy_trades.csv` — trade evidence for the winner.
