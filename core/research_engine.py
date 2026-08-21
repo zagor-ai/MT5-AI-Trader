@@ -1,8 +1,9 @@
 """Top-level orchestration for modular XAU strategy research."""
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from threading import Event
 from typing import Any, Callable, Dict, List, Optional
 from pathlib import Path
+from datetime import datetime, timezone
 import pandas as pd
 from .backtester import BacktestConfig, Backtester
 from .ranking import StrategyRanker
@@ -13,6 +14,7 @@ from .validation.validator import validation_score
 from .validation.walk_forward import evaluate_walk_forward
 from .validation.walk_forward_score import walk_forward_score
 from .exporter import export_results
+from .research_report import export_research_report
 from validation.monte_carlo import MonteCarloConfig, MonteCarloSimulator
 from validation.parameter_sensitivity import ParameterSensitivity, SensitivityConfig
 from validation.market_regime import detect_regimes, analyze_regimes, regime_robustness_score
@@ -60,6 +62,8 @@ class ResearchEngine:
         self.last_oos: List[Dict[str, Any]] = []
         self.last_walk_forward: List[Dict[str, Any]] = []
         self.last_exports: Dict[str, str] = {}
+        self.last_report: Dict[str, str] = {}
+        self.last_research_id: Optional[str] = None
 
     def generate_candidates(self) -> List[StrategySpec]: return self.generator.generate()
     def rank_results(self, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -148,8 +152,12 @@ class ResearchEngine:
 
     def run_research(self, data, stop_event=None, progress_callback=None, log_callback=None, walk_forward_progress_callback=None):
         if data is None or len(data) < 100: raise ValueError("Insufficient historical data. Load at least 100 bars before research.")
+        started = datetime.now(timezone.utc)
+        research_id = "XAU-" + started.strftime("%Y%m%d-%H%M%S") + "-" + started.strftime("%f")[:5]
+        self.last_research_id = research_id
         stop_event = stop_event or Event(); split = chronological_split(data, self.config.train_ratio); train_data, test_data = split.train, split.test; candidates = self.generate_candidates(); total = len(candidates); results = []
-        if log_callback: log_callback(f"Started. Candidates: {total}"); log_callback(f"TRAIN/TEST split: {len(train_data)}/{len(test_data)} bars ({self.config.train_ratio:.0%}/{1-self.config.train_ratio:.0%})")
+        pipeline = {"candidates_generated": total, "train_rejected": 0, "oos_rejected": 0, "candidate_failures": 0, "accepted_oos": 0, "walk_forward_tested": 0, "walk_forward_validated": 0, "final_ranked": 0}
+        if log_callback: log_callback(f"Started. Candidates: {total}"); log_callback(f"Research ID: {research_id}"); log_callback(f"TRAIN/TEST split: {len(train_data)}/{len(test_data)} bars ({self.config.train_ratio:.0%}/{1-self.config.train_ratio:.0%})")
         for index, candidate in enumerate(candidates, 1):
             if stop_event.is_set():
                 if log_callback: log_callback(f"STOP detected at candidate {index - 1}/{total}")
@@ -157,18 +165,21 @@ class ResearchEngine:
             try:
                 train = self.evaluate_spec(train_data, candidate)
                 if train["trade_count"] < self.config.min_train_trades:
+                    pipeline["train_rejected"] += 1
                     if log_callback: log_callback(f"Candidate {index}/{total}: rejected TRAIN trades={train['trade_count']} < {self.config.min_train_trades}")
                 else:
                     test = self.evaluate_spec(test_data, candidate)
                     if test["trade_count"] < self.config.min_oos_trades:
+                        pipeline["oos_rejected"] += 1
                         if log_callback: log_callback(f"Candidate {index}/{total}: rejected OOS trades={test['trade_count']} < {self.config.min_oos_trades}")
                     else:
                         train_net, test_net = float(train["net_r"]), float(test["net_r"]); train_dd, test_dd = max(float(train["max_drawdown_r"]), 1e-9), max(float(test["max_drawdown_r"]), 1e-9); validation = {"candidate": candidate, "train": train, "test": test, "oos_to_train_ratio": test_net / train_net if train_net > 0 else 0.0, "dd_ratio": test_dd / train_dd}; validation["validation_score"] = validation_score(validation); validation["candidate_index"] = index; results.append(validation)
                         if log_callback: log_callback(f"Candidate {index}/{total}: TRAIN PF={train['profit_factor']:.2f} OOS PF={test['profit_factor']:.2f} OOS NetR={test_net:.2f} Validation={validation['validation_score']:.2f}")
             except Exception as exc:
+                pipeline["candidate_failures"] += 1
                 if log_callback: log_callback(f"Candidate {index}/{total} failed: {exc}")
             if progress_callback: progress_callback(index, total)
-        self.last_oos = sorted(results, key=lambda x: x["validation_score"], reverse=True); self.last_ranked = self.last_oos[: self.config.top_n_oos]
+        self.last_oos = sorted(results, key=lambda x: x["validation_score"], reverse=True); self.last_ranked = self.last_oos[: self.config.top_n_oos]; pipeline["accepted_oos"] = len(self.last_oos); pipeline["walk_forward_tested"] = len(self.last_ranked)
         if log_callback: log_callback(f"TRAIN/TEST validation finished. Accepted OOS strategies: {len(self.last_oos)}")
         if self.config.walk_forward_enabled and self.last_ranked and not stop_event.is_set():
             wf_candidates = [item["candidate"] for item in self.last_ranked]
@@ -176,7 +187,7 @@ class ResearchEngine:
             def evaluate(spec_data, candidate): return {"trade_count": 0, "net_r": 0.0, "profit_factor": 0.0, "max_drawdown_r": 0.0} if stop_event.is_set() else self.evaluate_spec(spec_data, candidate)
             self.last_walk_forward = evaluate_walk_forward(data, wf_candidates, evaluate, train_bars=self.config.walk_forward_train_bars, test_bars=self.config.walk_forward_test_bars, step_bars=self.config.walk_forward_step_bars, min_test_trades=self.config.walk_forward_min_test_trades, stop_event=stop_event, progress_callback=walk_forward_progress_callback, log_callback=log_callback)
             for item in self.last_walk_forward: item["walk_forward_score"] = walk_forward_score(item)
-            self.last_walk_forward.sort(key=lambda x: x["walk_forward_score"], reverse=True); self.last_ranked = self.last_walk_forward[: self.config.top_n_walk_forward]
+            self.last_walk_forward.sort(key=lambda x: x["walk_forward_score"], reverse=True); self.last_ranked = self.last_walk_forward[: self.config.top_n_walk_forward]; pipeline["walk_forward_validated"] = len(self.last_walk_forward)
             if log_callback: log_callback(f"[WALK-FORWARD] Finished. Validated strategies: {len(self.last_walk_forward)}")
         if self.config.monte_carlo_enabled and self.last_ranked and not stop_event.is_set():
             if log_callback: log_callback(f"[MONTE CARLO] Started for TOP {len(self.last_ranked)} strategies | Simulations={self.config.monte_carlo_simulations}")
@@ -203,11 +214,16 @@ class ResearchEngine:
                 item["market_regime"] = self._run_regime_analysis(item, data, stop_event, log_callback); item["regime_robustness"] = float(item["market_regime"].get("robustness_score", 0.0)) if item.get("market_regime") else 0.0
             self.last_ranked.sort(key=lambda x: (x.get("regime_robustness", 0.0), x.get("sensitivity_robustness", 0.0), x.get("monte_carlo_robustness", 0.0), x.get("walk_forward_score", 0.0)), reverse=True)
             if log_callback: log_callback("[REGIME] Finished. Final robustness ranking updated.")
-        self.last_results = results
+        self.last_results = results; pipeline["final_ranked"] = len(self.last_ranked)
         if self.config.export_results and not stop_event.is_set() and self.last_ranked:
             try:
-                self.last_exports = export_results(self.last_ranked, Path(self.config.results_dir));
-                if log_callback: log_callback(f"[EXPORT] Results saved to {self.config.results_dir}/")
+                self.last_exports = export_results(self.last_ranked, Path(self.config.results_dir))
+                data_info = {"bars": len(data), "train_bars": len(train_data), "test_bars": len(test_data), "train_ratio": self.config.train_ratio, "start": str(data.index[0]) if len(data.index) else None, "end": str(data.index[-1]) if len(data.index) else None}
+                if "symbol" in data.attrs: data_info["symbol"] = data.attrs.get("symbol")
+                if "timeframe" in data.attrs: data_info["timeframe"] = data.attrs.get("timeframe")
+                self.last_report = export_research_report(Path(self.config.results_dir), research_id=research_id, data_info=data_info, config=asdict(self.config), pipeline=pipeline, ranked=self.last_ranked, code_version="xau-researcher-v2.1.1-clean")
+                self.last_exports.update(self.last_report)
+                if log_callback: log_callback(f"[EXPORT] Results saved to {self.config.results_dir}/"); log_callback(f"[REPORT] Research package: {research_id}")
             except Exception as exc:
                 if log_callback: log_callback(f"[EXPORT] Failed: {exc}")
         if progress_callback: progress_callback(total, total)
