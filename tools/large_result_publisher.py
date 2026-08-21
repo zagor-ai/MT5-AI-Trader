@@ -13,12 +13,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
+from math import isfinite
 from pathlib import Path
 import subprocess
 import time
 from datetime import datetime, timezone
-from typing import Any, Iterable
+from typing import Any
 
 DEFAULT_INPUT = Path("results/ranked_strategies.json")
 DEFAULT_OUTPUT = Path("results/large_result_digest.json")
@@ -37,11 +37,27 @@ def _git_sha() -> str | None:
         return None
 
 
-def _safe_number(value: Any, default: float = 0.0) -> float:
+def _optional_number(value: Any) -> float | None:
     try:
-        return float(value)
+        number = float(value)
+        return number if isfinite(number) else None
     except (TypeError, ValueError):
-        return default
+        return None
+
+
+def _safe_number(value: Any, default: float = 0.0) -> float:
+    number = _optional_number(value)
+    return default if number is None else number
+
+
+def _median(values: list[float]) -> float | None:
+    if not values:
+        return None
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return (ordered[middle - 1] + ordered[middle]) / 2.0
 
 
 def _file_fingerprint(path: Path) -> dict[str, Any]:
@@ -59,8 +75,6 @@ def _file_fingerprint(path: Path) -> dict[str, Any]:
 
 
 def _load_json(path: Path) -> Any:
-    # json.load is deliberate here: it preserves the complete strategy records.
-    # The raw object is released immediately after compact extraction.
     with path.open("r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -73,7 +87,6 @@ def _find_records(obj: Any) -> list[dict[str, Any]]:
             value = obj.get(key)
             if isinstance(value, list) and value and all(isinstance(x, dict) for x in value[: min(20, len(value))]):
                 return value
-        # Some exporters wrap records one level deeper.
         for value in obj.values():
             if isinstance(value, list) and value and isinstance(value[0], dict):
                 return value
@@ -87,34 +100,61 @@ def _candidate_name(row: dict[str, Any]) -> str:
     return str(row.get("strategy_name", candidate))
 
 
+def _first_number(*values: Any) -> float | None:
+    for value in values:
+        number = _optional_number(value)
+        if number is not None:
+            return number
+    return None
+
+
 def _compact_strategy(row: dict[str, Any], rank: int) -> dict[str, Any]:
     candidate = row.get("candidate", row.get("strategy", {}))
     if hasattr(candidate, "to_dict"):
         candidate = candidate.to_dict()
     if not isinstance(candidate, dict):
         candidate = {"name": str(candidate)}
+
     test = row.get("test", {}) if isinstance(row.get("test", {}), dict) else {}
     wf = row.get("walk_forward", {}) if isinstance(row.get("walk_forward", {}), dict) else {}
     mc = row.get("monte_carlo", {}) if isinstance(row.get("monte_carlo", {}), dict) else {}
+
+    # Final ranked records may contain only Walk-Forward results. In that case
+    # the WF aggregate is the authoritative OOS evidence and must not become 0.
+    oos_pf = _first_number(test.get("profit_factor"), wf.get("oos_pf_mean"), row.get("oos_pf_mean"))
+    oos_net_r = _first_number(test.get("net_r"), wf.get("oos_net_r_sum"), row.get("oos_net_r_sum"))
+    oos_net_r_mean = _first_number(wf.get("oos_net_r_mean"), row.get("oos_net_r_mean"))
+    oos_trade_count = test.get("trade_count")
+    oos_win_rate = test.get("win_rate")
+    oos_expectancy = test.get("expectancy")
+    oos_dd = _first_number(test.get("max_drawdown_r"), wf.get("p95_max_drawdown_r"))
+
+    evidence = {
+        "oos_source": "test" if _optional_number(test.get("profit_factor")) is not None or _optional_number(test.get("net_r")) is not None else ("walk_forward" if oos_pf is not None or oos_net_r is not None else "unavailable"),
+        "test_metrics_available": bool(test),
+    }
+
     return {
         "rank": rank,
         "name": _candidate_name(row),
         "direction": candidate.get("direction"),
         "candidate": candidate,
-        "validation_score": _safe_number(row.get("validation_score")),
-        "walk_forward_score": _safe_number(row.get("walk_forward_score")),
-        "monte_carlo_robustness": _safe_number(row.get("monte_carlo_robustness")),
-        "sensitivity_robustness": _safe_number(row.get("sensitivity_robustness")),
-        "regime_robustness": _safe_number(row.get("regime_robustness")),
-        "oos_to_train_ratio": _safe_number(row.get("oos_to_train_ratio")),
-        "dd_ratio": _safe_number(row.get("dd_ratio")),
+        "validation_score": _optional_number(row.get("validation_score")),
+        "walk_forward_score": _optional_number(row.get("walk_forward_score")),
+        "monte_carlo_robustness": _optional_number(row.get("monte_carlo_robustness")),
+        "sensitivity_robustness": _optional_number(row.get("sensitivity_robustness")),
+        "regime_robustness": _optional_number(row.get("regime_robustness")),
+        "oos_to_train_ratio": _optional_number(row.get("oos_to_train_ratio")),
+        "dd_ratio": _optional_number(row.get("dd_ratio")),
+        "evidence": evidence,
         "oos": {
-            "trade_count": test.get("trade_count"),
-            "win_rate": test.get("win_rate"),
-            "profit_factor": test.get("profit_factor"),
-            "net_r": test.get("net_r"),
-            "expectancy": test.get("expectancy"),
-            "max_drawdown_r": test.get("max_drawdown_r"),
+            "trade_count": oos_trade_count,
+            "win_rate": oos_win_rate,
+            "profit_factor": oos_pf,
+            "net_r": oos_net_r,
+            "net_r_mean": oos_net_r_mean,
+            "expectancy": oos_expectancy,
+            "max_drawdown_r": oos_dd,
         },
         "walk_forward": {
             "window_count": wf.get("window_count", row.get("window_count")),
@@ -128,6 +168,22 @@ def _compact_strategy(row: dict[str, Any], rank: int) -> dict[str, Any]:
     }
 
 
+def _quality_checks(strategies: list[dict[str, Any]]) -> list[str]:
+    warnings: list[str] = []
+    missing_base_oos = sum(1 for x in strategies if x["evidence"]["oos_source"] == "walk_forward")
+    unavailable_oos = sum(1 for x in strategies if x["evidence"]["oos_source"] == "unavailable")
+    missing_validation = sum(1 for x in strategies if x.get("validation_score") is None)
+    if missing_base_oos:
+        warnings.append(f"Base TRAIN/TEST OOS metrics unavailable for {missing_base_oos}/{len(strategies)} ranked strategies; Walk-Forward OOS aggregates were used instead.")
+    if unavailable_oos:
+        warnings.append(f"No OOS metrics were found for {unavailable_oos}/{len(strategies)} ranked strategies.")
+    if missing_validation:
+        warnings.append(f"Validation score is unavailable for {missing_validation}/{len(strategies)} ranked strategies in the final export.")
+    if not warnings:
+        warnings.append("No report-consistency warnings detected in the compacted ranking evidence.")
+    return warnings
+
+
 def build_digest(path: Path) -> tuple[dict[str, Any], str]:
     fingerprint = _file_fingerprint(path)
     raw = _load_json(path)
@@ -136,23 +192,28 @@ def build_digest(path: Path) -> tuple[dict[str, Any], str]:
         raise ValueError("Could not locate a strategy-record list in the large JSON file")
 
     compact = [_compact_strategy(row, i) for i, row in enumerate(records, 1)]
-    # Preserve the complete ranking evidence but discard bulky trade/equity arrays.
-    pfs = [_safe_number(x["oos"].get("profit_factor"), 0.0) for x in compact]
-    nets = [_safe_number(x["oos"].get("net_r"), 0.0) for x in compact]
-    positives = [x["walk_forward"].get("positive_window_ratio") for x in compact if x["walk_forward"].get("positive_window_ratio") is not None]
+    pfs = [x["oos"]["profit_factor"] for x in compact if x["oos"]["profit_factor"] is not None]
+    nets = [x["oos"]["net_r"] for x in compact if x["oos"]["net_r"] is not None]
+    positives = [float(x["walk_forward"]["positive_window_ratio"]) for x in compact if _optional_number(x["walk_forward"].get("positive_window_ratio")) is not None]
     best = compact[0] if compact else None
+    warnings = _quality_checks(compact)
     digest = {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "generated_utc": datetime.now(timezone.utc).isoformat(),
         "source": fingerprint,
         "git_commit_sha": _git_sha(),
         "raw_file_policy": "local_only; never committed or uploaded",
         "record_count": len(compact),
+        "quality": {
+            "status": "WARNING" if any(not x.startswith("No report-consistency") for x in warnings) else "OK",
+            "warnings": warnings,
+            "oos_metric_policy": "prefer final test metrics; otherwise use Walk-Forward OOS aggregates; never convert missing values to zero",
+        },
         "summary": {
             "best_strategy": best,
-            "oos_profit_factor": {"min": min(pfs) if pfs else None, "median": sorted(pfs)[len(pfs)//2] if pfs else None, "max": max(pfs) if pfs else None},
-            "oos_net_r": {"min": min(nets) if nets else None, "median": sorted(nets)[len(nets)//2] if nets else None, "max": max(nets) if nets else None},
-            "walk_forward_positive_ratio": {"min": min(positives) if positives else None, "mean": sum(float(x) for x in positives) / len(positives) if positives else None, "max": max(positives) if positives else None},
+            "oos_profit_factor": {"min": min(pfs) if pfs else None, "median": _median(pfs), "max": max(pfs) if pfs else None},
+            "oos_net_r": {"min": min(nets) if nets else None, "median": _median(nets), "max": max(nets) if nets else None},
+            "walk_forward_positive_ratio": {"min": min(positives) if positives else None, "mean": sum(positives) / len(positives) if positives else None, "max": max(positives) if positives else None},
         },
         "strategies": compact,
     }
@@ -161,13 +222,19 @@ def build_digest(path: Path) -> tuple[dict[str, Any], str]:
     return digest, markdown
 
 
+def _fmt(value: Any, digits: int = 2) -> str:
+    number = _optional_number(value)
+    return "N/A" if number is None else f"{number:.{digits}f}"
+
+
 def _markdown(digest: dict[str, Any]) -> str:
     s = digest["source"]
     summary = digest["summary"]
+    quality = digest["quality"]
     lines = [
         "# XAU Large Result Audit",
         "",
-        "This file is an automatically generated compact audit of the local large research JSON. The raw file is never uploaded.",
+        "Automatically generated compact audit of the local large research JSON. The raw file is never uploaded.",
         "",
         "## Source",
         f"- Path: `{s['path']}`",
@@ -177,6 +244,15 @@ def _markdown(digest: dict[str, Any]) -> str:
         f"- Source Git commit: `{digest.get('git_commit_sha')}`",
         f"- Strategy records: `{digest['record_count']}`",
         "",
+        "## Report Quality",
+        f"- Status: **{quality['status']}**",
+        f"- OOS policy: `{quality['oos_metric_policy']}`",
+    ]
+    lines.extend(f"- ⚠ {warning}" for warning in quality["warnings"] if not warning.startswith("No report-consistency"))
+    if quality["status"] == "OK":
+        lines.append("- ✓ No report-consistency warnings detected.")
+    lines += [
+        "",
         "## Distribution",
         f"- OOS PF: min `{summary['oos_profit_factor']['min']}`, median `{summary['oos_profit_factor']['median']}`, max `{summary['oos_profit_factor']['max']}`",
         f"- OOS Net R: min `{summary['oos_net_r']['min']}`, median `{summary['oos_net_r']['median']}`, max `{summary['oos_net_r']['max']}`",
@@ -184,12 +260,31 @@ def _markdown(digest: dict[str, Any]) -> str:
         "",
         "## Ranking",
         "",
-        "| Rank | Strategy | Direction | Validation | WF | MC | Sensitivity | Regime | OOS PF | OOS Net R | WF Positive |",
-        "|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "| Rank | Strategy | Dir | Validation | WF | MC | Sensitivity | Regime | OOS Source | OOS PF | OOS Net R | WF Positive |",
+        "|---:|---|:---:|---:|---:|---:|---:|---:|---|---:|---:|---:|",
     ]
     for x in digest["strategies"]:
-        lines.append(f"| {x['rank']} | `{x['name']}` | {x.get('direction','')} | {x['validation_score']:.2f} | {x['walk_forward_score']:.2f} | {x['monte_carlo_robustness']:.1f} | {x['sensitivity_robustness']:.1f} | {x['regime_robustness']:.1f} | {x['oos'].get('profit_factor')} | {x['oos'].get('net_r')} | {x['walk_forward'].get('positive_window_ratio')} |")
-    lines += ["", "## Audit Policy", "- Full strategy definitions and ranking metrics are retained in the compact JSON.", "- Trade arrays, equity curves and other bulky raw fields are removed before publication.", "- The source SHA-256 lets the manager detect whether the local large file changed.", "- Publishing is idempotent: an unchanged source file creates no new commit.", ""]
+        lines.append(
+            f"| {x['rank']} | `{x['name']}` | {x.get('direction','')} | {_fmt(x['validation_score'])} | {_fmt(x['walk_forward_score'])} | {_fmt(x['monte_carlo_robustness'],1)} | {_fmt(x['sensitivity_robustness'],1)} | {_fmt(x['regime_robustness'],1)} | `{x['evidence']['oos_source']}` | {_fmt(x['oos'].get('profit_factor'))} | {_fmt(x['oos'].get('net_r'))} | {_fmt(x['walk_forward'].get('positive_window_ratio'),3)} |"
+        )
+    lines += [
+        "",
+        "## Best Strategy Evidence",
+        f"- Strategy: `{digest['strategies'][0]['name']}`" if digest["strategies"] else "- Strategy: N/A",
+        f"- OOS source: `{digest['strategies'][0]['evidence']['oos_source']}`" if digest["strategies"] else "- OOS source: N/A",
+        f"- Walk-Forward: `{digest['strategies'][0]['walk_forward'].get('positive_windows')}/{digest['strategies'][0]['walk_forward'].get('window_count')}` positive windows" if digest["strategies"] else "- Walk-Forward: N/A",
+        f"- OOS Net R: `{digest['strategies'][0]['oos'].get('net_r')}`" if digest["strategies"] else "- OOS Net R: N/A",
+        f"- OOS PF: `{digest['strategies'][0]['oos'].get('profit_factor')}`" if digest["strategies"] else "- OOS PF: N/A",
+        "",
+        "## Audit Policy",
+        "- Full strategy definitions and ranking metrics are retained in the compact JSON.",
+        "- Trade arrays, equity curves and other bulky raw fields are removed before publication.",
+        "- Missing metrics remain `null`/`N/A`; they are never silently converted to zero.",
+        "- When final TRAIN/TEST OOS metrics are absent, Walk-Forward OOS aggregates are used and the report explicitly warns about it.",
+        "- The source SHA-256 lets the manager detect whether the local large file changed.",
+        "- Publishing is idempotent: an unchanged source file creates no new commit.",
+        "",
+    ]
     return "\n".join(lines)
 
 
@@ -215,7 +310,6 @@ def publish_once(input_path: Path = DEFAULT_INPUT) -> bool:
     DEFAULT_MARKDOWN.write_text(markdown, encoding="utf-8")
     STATE_FILE.write_text(json.dumps({"source_sha256": source_hash, "published_utc": datetime.now(timezone.utc).isoformat()}, indent=2), encoding="utf-8")
 
-    # Only these compact files are staged. Never use git add -A here.
     subprocess.run(["git", "add", "--", str(DEFAULT_OUTPUT), str(DEFAULT_MARKDOWN)], check=True)
     status = subprocess.check_output(["git", "status", "--porcelain"], text=True)
     if not status.strip():
