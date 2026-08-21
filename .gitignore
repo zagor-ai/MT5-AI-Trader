@@ -1,2 +1,9 @@
-.venv/ 
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 results/ranked_strategies.json
+results/full/
+results/raw/
+results/**/*.tmp
