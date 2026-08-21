@@ -7,6 +7,7 @@ import importlib.metadata
 import json
 from pathlib import Path
 import platform
+import subprocess
 from typing import Any, Dict, Iterable, List, Optional
 
 
@@ -36,6 +37,14 @@ def _metric(value: Any, default: float = 0.0) -> float:
         return default
 
 
+def _git_commit_sha() -> Optional[str]:
+    """Read the exact source revision when the app runs inside its Git checkout."""
+    try:
+        return subprocess.check_output(["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL).strip() or None
+    except Exception:
+        return None
+
+
 def _runtime_info() -> Dict[str, Any]:
     """Collect lightweight runtime metadata without initializing or trading on MT5."""
     packages: Dict[str, str] = {}
@@ -44,28 +53,15 @@ def _runtime_info() -> Dict[str, Any]:
             packages[name] = importlib.metadata.version(name)
         except importlib.metadata.PackageNotFoundError:
             packages[name] = "not-installed"
-    info: Dict[str, Any] = {
-        "python_version": platform.python_version(),
-        "platform": platform.platform(),
-        "packages": packages,
-    }
+    info: Dict[str, Any] = {"python_version": platform.python_version(), "platform": platform.platform(), "packages": packages}
     try:
         import MetaTrader5 as mt5
         terminal = mt5.terminal_info()
         account = mt5.account_info()
         if terminal is not None:
-            info["mt5_terminal"] = {
-                "name": getattr(terminal, "name", None),
-                "build": getattr(terminal, "build", None),
-                "company": getattr(terminal, "company", None),
-                "path": getattr(terminal, "path", None),
-            }
+            info["mt5_terminal"] = {"name": getattr(terminal, "name", None), "build": getattr(terminal, "build", None), "company": getattr(terminal, "company", None), "path": getattr(terminal, "path", None)}
         if account is not None:
-            info["mt5_account"] = {
-                "login": getattr(account, "login", None),
-                "server": getattr(account, "server", None),
-                "currency": getattr(account, "currency", None),
-            }
+            info["mt5_account"] = {"login": getattr(account, "login", None), "server": getattr(account, "server", None), "currency": getattr(account, "currency", None)}
     except Exception as exc:
         info["mt5_runtime_note"] = f"metadata unavailable: {exc}"
     return _safe(info)
@@ -96,13 +92,7 @@ def _compact_sensitivity(value: Any) -> Dict[str, Any]:
         if not isinstance(result, dict):
             output[str(parameter)] = _safe(result)
             continue
-        output[str(parameter)] = {
-            "pass_rate": _safe(result.get("pass_rate")),
-            "robust": _safe(result.get("robust")),
-            "minimum_pf": _safe(result.get("minimum_pf")),
-            "minimum_expectancy": _safe(result.get("minimum_expectancy")),
-            "tested_values": _safe(result.get("tested_values", result.get("values", []))),
-        }
+        output[str(parameter)] = {"pass_rate": _safe(result.get("pass_rate")), "robust": _safe(result.get("robust")), "minimum_pf": _safe(result.get("minimum_pf")), "minimum_expectancy": _safe(result.get("minimum_expectancy")), "tested_values": _safe(result.get("tested_values", result.get("values", [])))}
     return output
 
 
@@ -125,31 +115,10 @@ def _compact_mc(value: Any) -> Dict[str, Any]:
 
 def _compact_item(item: Dict[str, Any], rank: int) -> Dict[str, Any]:
     candidate = item.get("candidate", item.get("strategy", {}))
-    compact = {
-        "rank": rank,
-        "candidate": _candidate_summary(candidate),
-        "candidate_index": item.get("candidate_index"),
-        "validation_score": _metric(item.get("validation_score")),
-        "walk_forward_score": _metric(item.get("walk_forward_score")),
-        "monte_carlo_robustness": _metric(item.get("monte_carlo_robustness")),
-        "sensitivity_robustness": _metric(item.get("sensitivity_robustness")),
-        "regime_robustness": _metric(item.get("regime_robustness")),
-        "oos_to_train_ratio": _metric(item.get("oos_to_train_ratio")),
-        "dd_ratio": _metric(item.get("dd_ratio")),
-        "train": _compact_metrics(item.get("train")),
-        "test": _compact_metrics(item.get("test")),
-    }
+    compact = {"rank": rank, "candidate": _candidate_summary(candidate), "candidate_index": item.get("candidate_index"), "validation_score": _metric(item.get("validation_score")), "walk_forward_score": _metric(item.get("walk_forward_score")), "monte_carlo_robustness": _metric(item.get("monte_carlo_robustness")), "sensitivity_robustness": _metric(item.get("sensitivity_robustness")), "regime_robustness": _metric(item.get("regime_robustness")), "oos_to_train_ratio": _metric(item.get("oos_to_train_ratio")), "dd_ratio": _metric(item.get("dd_ratio")), "train": _compact_metrics(item.get("train")), "test": _compact_metrics(item.get("test"))}
     windows = item.get("windows")
     if isinstance(windows, list):
-        compact["walk_forward"] = {
-            "window_count": item.get("window_count", len(windows)),
-            "positive_windows": item.get("positive_windows"),
-            "positive_window_ratio": item.get("positive_window_ratio"),
-            "oos_net_r_sum": item.get("oos_net_r_sum"),
-            "oos_net_r_mean": item.get("oos_net_r_mean"),
-            "oos_pf_mean": item.get("oos_pf_mean"),
-            "windows": [_compact_window(w) for w in windows],
-        }
+        compact["walk_forward"] = {"window_count": item.get("window_count", len(windows)), "positive_windows": item.get("positive_windows"), "positive_window_ratio": item.get("positive_window_ratio"), "oos_net_r_sum": item.get("oos_net_r_sum"), "oos_net_r_mean": item.get("oos_net_r_mean"), "oos_pf_mean": item.get("oos_pf_mean"), "windows": [_compact_window(w) for w in windows]}
     if item.get("monte_carlo") is not None:
         compact["monte_carlo"] = _compact_mc(item.get("monte_carlo"))
     if item.get("parameter_sensitivity") is not None:
@@ -163,20 +132,7 @@ def _markdown(report: Dict[str, Any]) -> str:
     run, data, cfg, pipeline = report["run"], report["data"], report["config"], report["pipeline"]
     ranked = report["ranking"]["top_strategies"]
     best = ranked[0] if ranked else None
-    lines = [
-        "# XAU Strategy Research Report", "",
-        "> Machine-readable companion: `research_report.json`. Raw bulky research files are intentionally not included in this report.", "",
-        "## Executive Summary",
-        f"- Research ID: `{run['research_id']}`",
-        f"- Generated UTC: `{run['generated_utc']}`",
-        f"- Code version: `{run.get('code_version')}`",
-        f"- Symbol: `{data.get('symbol', 'unknown')}`",
-        f"- Timeframe: `{data.get('timeframe', 'unknown')}`",
-        f"- Bars: `{data.get('bars', 'unknown')}`",
-        f"- Candidates generated: `{pipeline['candidates_generated']}`",
-        f"- Accepted OOS strategies: `{pipeline['accepted_oos']}`",
-        f"- Final ranked strategies: `{pipeline['final_ranked']}`",
-    ]
+    lines = ["# XAU Strategy Research Report", "", "> Machine-readable companion: `research_report.json`. Raw bulky research files are intentionally not included in this report.", "", "## Executive Summary", f"- Research ID: `{run['research_id']}`", f"- Generated UTC: `{run['generated_utc']}`", f"- Code commit: `{run.get('git_commit_sha')}`", f"- Symbol: `{data.get('symbol', 'unknown')}`", f"- Timeframe: `{data.get('timeframe', 'unknown')}`", f"- Bars: `{data.get('bars', 'unknown')}`", f"- Candidates generated: `{pipeline['candidates_generated']}`", f"- Accepted OOS strategies: `{pipeline['accepted_oos']}`", f"- Final ranked strategies: `{pipeline['final_ranked']}`"]
     if best:
         bc = best["candidate"]
         lines += ["", "### Best Strategy", f"- Name: `{bc.get('name', 'unknown')}`", f"- Direction: `{bc.get('direction', 'unknown')}`", f"- Validation score: `{best.get('validation_score', 0):.4f}`", f"- Walk-forward score: `{best.get('walk_forward_score', 0):.4f}`", f"- Monte Carlo robustness: `{best.get('monte_carlo_robustness', 0):.2f}`", f"- Sensitivity robustness: `{best.get('sensitivity_robustness', 0):.2f}`", f"- Regime robustness: `{best.get('regime_robustness', 0):.2f}`", f"- OOS Net R: `{best.get('test', {}).get('net_r', 0)}`", f"- OOS Profit Factor: `{best.get('test', {}).get('profit_factor', 0)}`"]
@@ -202,25 +158,13 @@ def export_research_report(output_dir: str | Path, *, research_id: str, data_inf
     cfg = _safe(config)
     generated = datetime.now(timezone.utc).isoformat()
     runtime = _runtime_info()
-    report = {
-        "schema_version": "1.1",
-        "run": {"research_id": research_id, "generated_utc": generated, "code_version": code_version},
-        "runtime": runtime,
-        "data": _safe(data_info),
-        "config": cfg,
-        "pipeline": _safe(pipeline),
-        "ranking": {"final_order": "regime_robustness > sensitivity_robustness > monte_carlo_robustness > walk_forward_score", "top_strategies": ranked_items},
-    }
+    commit_sha = _git_commit_sha()
+    report = {"schema_version": "1.2", "run": {"research_id": research_id, "generated_utc": generated, "code_version": code_version, "git_commit_sha": commit_sha}, "runtime": runtime, "data": _safe(data_info), "config": cfg, "pipeline": _safe(pipeline), "ranking": {"final_order": "regime_robustness > sensitivity_robustness > monte_carlo_robustness > walk_forward_score", "top_strategies": ranked_items}}
     json_path = out / "research_report.json"
     json_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     md_path = out / "CHATGPT_RESEARCH_REPORT.md"
     md_path.write_text(_markdown(report), encoding="utf-8")
-    manifest = {
-        "schema_version": "1.1", "research_id": research_id, "generated_utc": generated,
-        "code_version": code_version, "report_schema": report["schema_version"],
-        "files": ["research_report.json", "CHATGPT_RESEARCH_REPORT.md", "run_manifest.json"],
-        "raw_large_files": ["ranked_strategies.json"], "raw_large_files_policy": "local_only_and_gitignored", "report_is_compact": True,
-    }
+    manifest = {"schema_version": "1.2", "research_id": research_id, "generated_utc": generated, "code_version": code_version, "git_commit_sha": commit_sha, "report_schema": report["schema_version"], "files": ["research_report.json", "CHATGPT_RESEARCH_REPORT.md", "run_manifest.json"], "raw_large_files": ["ranked_strategies.json"], "raw_large_files_policy": "local_only_and_gitignored", "report_is_compact": True}
     manifest_path = out / "run_manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
     return {"report": str(json_path), "markdown": str(md_path), "manifest": str(manifest_path)}
