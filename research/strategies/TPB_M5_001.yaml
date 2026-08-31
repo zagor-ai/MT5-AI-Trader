@@ -1,0 +1,51 @@
+strategy_id: TPB-M5-001
+version: '1.0'
+symbol: XAUUSD
+timeframe: M5
+higher_timeframes: [H1, H4]
+
+trend:
+  ema_fast: 20
+  ema_mid: 50
+  ema_slow: 200
+
+swing:
+  left: 2
+  right: 2
+  confirmed_only: true
+
+impulse:
+  atr_period: 14
+  min_atr_multiple: 1.0
+
+pullback:
+  min_retracement: 0.25
+  max_retracement: 0.786
+
+bos:
+  confirmation: closed_candle
+  min_atr_multiple: 0.05
+
+stop:
+  buffer_atr: 0.15
+  min_distance_atr: 0.50
+  max_distance_atr: 2.00
+
+take_profit:
+  mode: fixed_R
+  R: 2.0
+
+execution:
+  entry: next_bar_open
+  max_hold_bars: 72
+
+risk:
+  unit: 1R
+  max_open_positions: 1
+
+safety:
+  live_orders: false
+  martingale: false
+  grid: false
+  averaging_down: false
+  pyramiding: false
