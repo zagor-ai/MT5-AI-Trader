@@ -6,7 +6,7 @@ Requires a running MT5 terminal and MetaTrader5/pandas/numpy packages.
 from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -33,24 +33,19 @@ class Config:
     rr: float = 2.0
     max_hold_bars: int = 72
     diagnostic_bars: int = 1000
+    max_bars_m5: int = 100000
+    max_bars_h1: int = 50000
+    max_bars_h4: int = 20000
 
 CFG = Config()
-
-
-def _utc_range():
-    start = datetime.strptime(CFG.start, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-    end = datetime.strptime(CFG.end, "%Y-%m-%d").replace(tzinfo=timezone.utc) + timedelta(days=1)
-    return start, end
 
 
 def _find_symbol():
     candidates = [CFG.symbol, "XAUUSDm", "XAUUSD.a", "XAUUSD.", "GOLD", "GOLDm"]
     for name in candidates:
         info = mt5.symbol_info(name)
-        if info is not None:
-            if mt5.symbol_select(name, True):
-                return name, info
-    # Last resort: inspect visible/all symbols for names containing gold/xau.
+        if info is not None and mt5.symbol_select(name, True):
+            return name, info
     symbols = mt5.symbols_get()
     matches = [] if symbols is None else [s for s in symbols if "XAU" in s.name.upper() or "GOLD" in s.name.upper()]
     for info in matches:
@@ -59,20 +54,22 @@ def _find_symbol():
     return None, None
 
 
-def rates(tf, tf_name):
-    # First perform a small bounded test. This gives a useful diagnostic and
-    # avoids blaming the strategy when MT5 history/parameters are the problem.
-    test = mt5.copy_rates_from_pos(CFG.symbol, tf, 1, CFG.diagnostic_bars)
-    if test is None or len(test) == 0:
-        raise RuntimeError(f"MT5 diagnostic failed for {CFG.symbol} {tf_name}: {mt5.last_error()}")
-
-    start, end = _utc_range()
-    a = mt5.copy_rates_range(CFG.symbol, tf, start, end)
-    if a is None or len(a) == 0:
-        raise RuntimeError(f"No MT5 data for {CFG.symbol} {tf_name}: {mt5.last_error()}")
+def rates(tf, tf_name, count):
+    """Load recent bars by position; avoids copy_rates_range parameter issues."""
+    print(f"[MT5-DATA] Requesting {count} recent {tf_name} bars...", flush=True)
+    a = mt5.copy_rates_from_pos(CFG.symbol, tf, 0, int(count))
+    err = mt5.last_error()
+    if a is None:
+        raise RuntimeError(f"MT5 data request failed for {CFG.symbol} {tf_name}: {err}")
+    if len(a) == 0:
+        raise RuntimeError(f"Zero MT5 bars for {CFG.symbol} {tf_name}: {err}")
     x = pd.DataFrame(a)
-    x.time = pd.to_datetime(x.time, unit="s", utc=True)
-    return x.drop_duplicates("time").sort_values("time").set_index("time")
+    if "time" not in x.columns:
+        raise RuntimeError(f"Unexpected MT5 response for {CFG.symbol} {tf_name}")
+    x["time"] = pd.to_datetime(x["time"], unit="s", utc=True)
+    x = x.drop_duplicates("time").sort_values("time").set_index("time")
+    print(f"[MT5-DATA] {tf_name}: bars={len(x)} range={x.index.min()} -> {x.index.max()}", flush=True)
+    return x
 
 
 def integrity(x, tf):
@@ -184,7 +181,7 @@ def main():
     print(f"[MT5] Connected. Terminal={getattr(terminal,'name','?')} Build={getattr(terminal,'build','?')}")
     actual, info = _find_symbol()
     if actual is None:
-        names = mt5.symbols_get(group="*XAU*" ) or []
+        names = mt5.symbols_get(group="*XAU*") or []
         names += mt5.symbols_get(group="*GOLD*") or []
         sample = [s.name for s in names[:30]]
         raise RuntimeError(f"No XAU/GOLD symbol found. Requested={CFG.symbol}. Candidates={sample}. last_error={mt5.last_error()}")
@@ -193,14 +190,16 @@ def main():
         CFG.symbol = actual
     print(f"[MT5] Symbol={CFG.symbol} digits={info.digits} point={info.point}")
     print("[TPB] Research only; no orders will be sent.")
-    m5,h1,h4=rates(mt5.TIMEFRAME_M5,"M5"),rates(mt5.TIMEFRAME_H1,"H1"),rates(mt5.TIMEFRAME_H4,"H4")
+    m5 = rates(mt5.TIMEFRAME_M5,"M5",CFG.max_bars_m5)
+    h1 = rates(mt5.TIMEFRAME_H1,"H1",CFG.max_bars_h1)
+    h4 = rates(mt5.TIMEFRAME_H4,"H4",CFG.max_bars_h4)
     reports={"M5":integrity(m5,"M5"),"H1":integrity(h1,"H1"),"H4":integrity(h4,"H4")}
     for k,v in reports.items(): print(f"[INTEGRITY] {k}: bars={v['bars']} healthy={v['healthy']} range={v['first_bar_utc']} -> {v['last_bar_utc']}")
     if not all(v["healthy"] for v in reports.values()): raise RuntimeError(f"Data integrity failed: {reports}")
     m5,t,metrics=run_backtest(m5,h1,h4)
     run=Path("research_runs")/("R"+datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")); run.mkdir(parents=True,exist_ok=True)
     m5.reset_index().to_csv(run/"XAUUSD_M5_features.csv",index=False); t.to_csv(run/"TPB_M5_001_trades.csv",index=False)
-    report={"strategy_id":"TPB-M5-001","version":"1.1","config":asdict(CFG),"data_integrity":reports,"metrics":metrics,"research_only":True,"live_orders_sent":False}
+    report={"strategy_id":"TPB-M5-001","version":"1.2","config":asdict(CFG),"data_integrity":reports,"metrics":metrics,"research_only":True,"live_orders_sent":False}
     (run/"TPB_M5_001_report.json").write_text(json.dumps(report,indent=2,default=str),encoding="utf-8")
     print(json.dumps(metrics,indent=2,default=str)); print(f"[EXPORT] {run.resolve()}")
     mt5.shutdown()
